@@ -1,0 +1,5 @@
+{
+  "name": "NETBAC",
+  "description": "Application de traçabilité HACCP pour restaurants. Supprimez les étiquettes physiques avec des bacs virtuels.",
+  "requestFramePermissions": ["camera"]
+}
