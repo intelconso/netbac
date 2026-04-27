@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, Bac, Product, User, Zone, StorageUnit, Shelf, ActivityLog, TemperatureLog, CleaningTask } from '../types';
+import { randomId } from './utils';
 
 interface StoreActions {
   addZone: (zone: Omit<Zone, 'id'>) => void;
@@ -25,126 +27,112 @@ interface StoreActions {
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
+  resetState: () => void;
 }
+
+const INITIAL_STATE: AppState = {
+  zones: [
+    { id: 'z1', name: 'Cuisine', icon: '👨‍🍳' },
+    { id: 'z2', name: 'Bar', icon: '🍸' },
+    { id: 'z3', name: 'Réserve', icon: '📦' },
+  ],
+  storageUnits: [
+    { id: 'u1', zoneId: 'z1', name: 'Frigo 1', type: 'frigo', icon: '❄️' },
+    { id: 'u2', zoneId: 'z1', name: 'Frigo 2', type: 'frigo', icon: '❄️' },
+    { id: 'u3', zoneId: 'z3', name: 'Étagère Sèche', type: 'reserve', icon: '🥫' },
+  ],
+  shelves: [
+    { id: 's1', unitId: 'u1', level: 1, name: 'Niveau Haut' },
+    { id: 's2', unitId: 'u1', level: 2, name: 'Niveau Milieu' },
+    { id: 's3', unitId: 'u1', level: 3, name: 'Niveau Bas' },
+  ],
+  bacs: [
+    { id: '1', shelfId: 's1', name: 'POULET', type: 'bac', color: '#10B981', icon: '🍗', createdAt: Date.now(), syncStatus: 'synced' },
+    { id: '2', shelfId: 's2', name: 'POISSON', type: 'bac', color: '#3B82F6', icon: '🐟', createdAt: Date.now(), syncStatus: 'synced' },
+    { id: '3', shelfId: 's3', name: 'LÉGUMES', type: 'boite', color: '#84CC16', icon: '🥬', createdAt: Date.now(), syncStatus: 'synced' },
+  ],
+  products: [],
+  logs: [],
+  tempLogs: [],
+  cleaningTasks: [
+    { id: 'c1', unitId: 'u1', name: 'Nettoyage intérieur', frequency: 'weekly', nextDue: Date.now() },
+    { id: 'c2', unitId: 'u2', name: 'Nettoyage intérieur', frequency: 'weekly', nextDue: Date.now() },
+  ],
+  user: null,
+  isOffline: false,
+};
 
 export const useStore = create<AppState & StoreActions>()(
   persist(
     (set, get) => ({
-      zones: [
-        { id: 'z1', name: 'Cuisine', icon: '👨‍🍳' },
-        { id: 'z2', name: 'Bar', icon: '🍸' },
-        { id: 'z3', name: 'Réserve', icon: '📦' },
-      ],
-      storageUnits: [
-        { id: 'u1', zoneId: 'z1', name: 'Frigo 1', type: 'frigo', icon: '❄️' },
-        { id: 'u2', zoneId: 'z1', name: 'Frigo 2', type: 'frigo', icon: '❄️' },
-        { id: 'u3', zoneId: 'z3', name: 'Étagère Sèche', type: 'reserve', icon: '🥫' },
-      ],
-      shelves: [
-        { id: 's1', unitId: 'u1', level: 1, name: 'Niveau Haut' },
-        { id: 's2', unitId: 'u1', level: 2, name: 'Niveau Milieu' },
-        { id: 's3', unitId: 'u1', level: 3, name: 'Niveau Bas' },
-      ],
-      bacs: [
-        { id: '1', shelfId: 's1', name: 'POULET', type: 'bac', color: '#10B981', icon: '🍗', createdAt: Date.now(), syncStatus: 'synced' },
-        { id: '2', shelfId: 's2', name: 'POISSON', type: 'bac', color: '#3B82F6', icon: '🐟', createdAt: Date.now(), syncStatus: 'synced' },
-        { id: '3', shelfId: 's3', name: 'LÉGUMES', type: 'boite', color: '#84CC16', icon: '🥬', createdAt: Date.now(), syncStatus: 'synced' },
-      ],
-      products: [],
-      logs: [],
-      tempLogs: [],
-      cleaningTasks: [
-        { id: 'c1', unitId: 'u1', name: 'Nettoyage intérieur', frequency: 'weekly', nextDue: Date.now() },
-        { id: 'c2', unitId: 'u2', name: 'Nettoyage intérieur', frequency: 'weekly', nextDue: Date.now() },
-      ],
-      user: {
-        id: 'user-1',
-        name: 'Mohamed YAHI',
-        restaurantName: 'Digital Pro',
-        isPro: true,
-        settings: {
-          enableTemperature: true,
-          enableCleaning: true,
-          simplifiedMode: false,
-        }
-      },
-      isOffline: false,
+      ...INITIAL_STATE,
 
       addZone: (zone) => set((state) => ({
-        zones: [...state.zones, { ...zone, id: crypto.randomUUID() }]
+        zones: [...state.zones, { ...zone, id: randomId() }],
       })),
 
       deleteZone: (id) => set((state) => ({
-        zones: state.zones.filter(z => z.id !== id),
-        storageUnits: state.storageUnits.filter(u => u.zoneId !== id)
+        zones: state.zones.filter((z) => z.id !== id),
+        storageUnits: state.storageUnits.filter((u) => u.zoneId !== id),
       })),
 
       addStorageUnit: (unit) => set((state) => ({
-        storageUnits: [...state.storageUnits, { ...unit, id: crypto.randomUUID() }]
+        storageUnits: [...state.storageUnits, { ...unit, id: randomId() }],
       })),
 
       updateStorageUnit: (id, unit) => set((state) => ({
-        storageUnits: state.storageUnits.map(u => u.id === id ? { ...u, ...unit } : u)
+        storageUnits: state.storageUnits.map((u) => (u.id === id ? { ...u, ...unit } : u)),
       })),
 
       deleteStorageUnit: (id) => set((state) => ({
-        storageUnits: state.storageUnits.filter(u => u.id !== id),
-        shelves: state.shelves.filter(s => s.unitId !== id)
+        storageUnits: state.storageUnits.filter((u) => u.id !== id),
+        shelves: state.shelves.filter((s) => s.unitId !== id),
       })),
 
       addShelf: (shelf) => set((state) => ({
-        shelves: [...state.shelves, { ...shelf, id: crypto.randomUUID() }]
+        shelves: [...state.shelves, { ...shelf, id: randomId() }],
       })),
 
       updateShelf: (id, shelf) => set((state) => ({
-        shelves: state.shelves.map(s => s.id === id ? { ...s, ...shelf } : s)
+        shelves: state.shelves.map((s) => (s.id === id ? { ...s, ...shelf } : s)),
       })),
 
       deleteShelf: (id) => set((state) => ({
-        shelves: state.shelves.filter(s => s.id !== id),
-        bacs: state.bacs.filter(b => b.shelfId !== id)
+        shelves: state.shelves.filter((s) => s.id !== id),
+        bacs: state.bacs.filter((b) => b.shelfId !== id),
       })),
 
       setUnitShelves: (unitId, count) => set((state) => {
-        const existingShelves = state.shelves.filter(s => s.unitId === unitId);
-        const otherShelves = state.shelves.filter(s => s.unitId !== unitId);
-        
+        const existingShelves = state.shelves.filter((s) => s.unitId === unitId);
+        const otherShelves = state.shelves.filter((s) => s.unitId !== unitId);
         const newShelves = Array.from({ length: count }, (_, i) => {
           const level = i + 1;
-          const existing = existingShelves.find(s => s.level === level);
-          return existing || {
-            id: crypto.randomUUID(),
-            unitId,
-            level,
-            name: `Niveau ${level}`
-          };
+          const existing = existingShelves.find((s) => s.level === level);
+          return existing || { id: randomId(), unitId, level, name: `Niveau ${level}` };
         });
-
-        return {
-          shelves: [...otherShelves, ...newShelves].sort((a, b) => a.level - b.level)
-        };
+        return { shelves: [...otherShelves, ...newShelves].sort((a, b) => a.level - b.level) };
       }),
 
       addBac: (bac) => set((state) => ({
         bacs: [...state.bacs, {
           ...bac,
-          id: crypto.randomUUID(),
+          id: randomId(),
           createdAt: Date.now(),
-          syncStatus: state.isOffline ? 'offline' : 'pending'
-        }]
+          syncStatus: state.isOffline ? 'offline' : 'pending',
+        }],
       })),
 
       updateBac: (id, bac) => set((state) => ({
-        bacs: state.bacs.map(b => b.id === id ? { ...b, ...bac } : b)
+        bacs: state.bacs.map((b) => (b.id === id ? { ...b, ...bac } : b)),
       })),
 
       deleteBac: (id) => set((state) => ({
-        bacs: state.bacs.filter(b => b.id !== id),
-        products: state.products.filter(p => p.bacId !== id)
+        bacs: state.bacs.filter((b) => b.id !== id),
+        products: state.products.filter((p) => p.bacId !== id),
       })),
 
       addProduct: (product) => {
-        const id = crypto.randomUUID();
+        const id = randomId();
         set((state) => ({
           products: [...state.products, {
             ...product,
@@ -152,89 +140,69 @@ export const useStore = create<AppState & StoreActions>()(
             addedAt: Date.now(),
             modifiedAt: Date.now(),
             status: 'active',
-            syncStatus: state.isOffline ? 'offline' : 'pending'
-          }]
+            syncStatus: state.isOffline ? 'offline' : 'pending',
+          }],
         }));
-        get().addLog({
-          action: 'add_product',
-          details: `Ajout du produit: ${product.name}`,
-          entityId: id
-        });
+        get().addLog({ action: 'add_product', details: `Ajout du produit: ${product.name}`, entityId: id });
         return id;
       },
 
       updateProductStatus: (id, status) => {
-        const product = get().products.find(p => p.id === id);
+        const product = get().products.find((p) => p.id === id);
         set((state) => ({
-          products: state.products.map(p => 
+          products: state.products.map((p) =>
             p.id === id ? { ...p, status, modifiedAt: Date.now(), syncStatus: state.isOffline ? 'offline' : 'pending' } : p
-          )
+          ),
         }));
         if (product) {
           get().addLog({
             action: status === 'used' ? 'use_product' : 'discard_product',
             details: `${status === 'used' ? 'Utilisation' : 'Mise au rebut'} de: ${product.name}`,
-            entityId: id
+            entityId: id,
           });
         }
       },
 
       updateProduct: (id, productData) => {
-        const product = get().products.find(p => p.id === id);
+        const product = get().products.find((p) => p.id === id);
         set((state) => ({
-          products: state.products.map(p => 
+          products: state.products.map((p) =>
             p.id === id ? { ...p, ...productData, modifiedAt: Date.now(), syncStatus: state.isOffline ? 'offline' : 'pending' } : p
-          )
+          ),
         }));
         if (product) {
-          get().addLog({
-            action: 'update_product',
-            details: `Mise à jour du produit: ${product.name}`,
-            entityId: id
-          });
+          get().addLog({ action: 'update_product', details: `Mise à jour du produit: ${product.name}`, entityId: id });
         }
       },
 
       deleteProduct: (id) => set((state) => ({
-        products: state.products.filter(p => p.id !== id)
+        products: state.products.filter((p) => p.id !== id),
       })),
 
       addTempLog: (log) => {
-        const id = crypto.randomUUID();
+        const id = randomId();
         const timestamp = Date.now();
-        const unitName = get().storageUnits.find(u => u.id === log.unitId)?.name || 'Unité inconnue';
-        
-        set((state) => ({
-          tempLogs: [...state.tempLogs, { ...log, id, timestamp } as TemperatureLog]
-        }));
-        
+        const unitName = get().storageUnits.find((u) => u.id === log.unitId)?.name || 'Unité inconnue';
+        set((state) => ({ tempLogs: [...state.tempLogs, { ...log, id, timestamp } as TemperatureLog] }));
         get().addLog({
           action: 'temp_check',
           details: `Relevé de température: ${log.temperature}°C pour ${unitName}`,
-          entityId: id
+          entityId: id,
         });
       },
 
       completeCleaningTask: (taskId) => {
         const now = Date.now();
-        const task = get().cleaningTasks.find(t => t.id === taskId);
+        const task = get().cleaningTasks.find((t) => t.id === taskId);
         if (!task) return;
-
         let nextDue = now;
         if (task.frequency === 'daily') nextDue += 24 * 60 * 60 * 1000;
         else if (task.frequency === 'weekly') nextDue += 7 * 24 * 60 * 60 * 1000;
         else if (task.frequency === 'monthly') nextDue += 30 * 24 * 60 * 60 * 1000;
-
         set((state) => ({
-          cleaningTasks: state.cleaningTasks.map(t => 
-            t.id === taskId ? { ...t, lastDone: now, nextDue } : t
-          )
+          cleaningTasks: state.cleaningTasks.map((t) => (t.id === taskId ? { ...t, lastDone: now, nextDue } : t)),
         }));
-        get().addLog({
-          action: 'cleaning',
-          details: `Nettoyage effectué: ${task.name}`,
-          entityId: taskId
-        });
+        get().addLog({ action: 'cleaning', details: `Nettoyage effectué: ${task.name}`, entityId: taskId });
       },
 
       addLog: (log) => {
@@ -242,36 +210,34 @@ export const useStore = create<AppState & StoreActions>()(
         set((state) => ({
           logs: [{
             ...log,
-            id: crypto.randomUUID(),
+            id: randomId(),
             timestamp: Date.now(),
             userId: user?.id || 'unknown',
-            userName: user?.name || 'Inconnu'
-          } as ActivityLog, ...state.logs].slice(0, 100) // Keep last 100 logs
+            userName: user?.name || 'Inconnu',
+          } as ActivityLog, ...state.logs].slice(0, 100),
         }));
       },
 
-      setUser: (user) => set({ 
-        user: user ? {
-          ...user,
-          settings: {
-            enableTemperature: true,
-            enableCleaning: true,
-            simplifiedMode: false,
-            ...user.settings
-          }
-        } : null 
-      }),
+      setUser: (user) => set({ user }),
+
       updateSettings: (newSettings) => set((state) => ({
-        user: state.user ? {
-          ...state.user,
-          settings: { ...state.user.settings, ...newSettings }
-        } : null
+        user: state.user ? { ...state.user, settings: { ...state.user.settings, ...newSettings } } : null,
       })),
+
       setOffline: (isOffline) => set({ isOffline }),
+
+      resetState: () => set(INITIAL_STATE),
     }),
     {
       name: 'netbac-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => AsyncStorage),
     }
   )
 );
+
+export async function switchStoreToUser(uid: string | null) {
+  const newKey = uid ? `netbac-storage-${uid}` : 'netbac-storage-anon';
+  useStore.getState().resetState();
+  useStore.persist.setOptions({ name: newKey });
+  await useStore.persist.rehydrate();
+}

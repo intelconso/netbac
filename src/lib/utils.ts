@@ -6,11 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDate(date: number | Date): string {
-  return new Intl.DateTimeFormat('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(date);
+  const d = new Date(date);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 export function getDaysRemaining(dlc: number): number {
@@ -20,22 +20,25 @@ export function getDaysRemaining(dlc: number): number {
 
 export function getStatusColor(dlc: number): string {
   const days = getDaysRemaining(dlc);
-  if (days <= 0) return '#EF4444'; // Danger
-  if (days <= 2) return '#F59E0B'; // Alert
-  return '#10B981'; // Success
+  if (days <= 0) return '#EF4444';
+  if (days <= 2) return '#F59E0B';
+  return '#10B981';
 }
 
 export function getDayColor(timestamp: number): string {
   const day = new Date(timestamp).getDay();
-  // Professional color coding (Day of the week)
   const colors = [
-    '#FFFFFF', // 0: Sunday (White)
-    '#FACC15', // 1: Monday (Yellow)
-    '#3B82F6', // 2: Tuesday (Blue)
-    '#F472B6', // 3: Wednesday (Pink)
-    '#22C55E', // 4: Thursday (Green)
-    '#78350F', // 5: Friday (Brown)
-    '#F97316', // 6: Saturday (Orange)
+    '#FFFFFF',
+    '#FACC15',
+    '#3B82F6',
+    '#F472B6',
+    '#22C55E',
+    '#78350F',
+    '#F97316',
   ];
   return colors[day];
+}
+
+export function randomId(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
