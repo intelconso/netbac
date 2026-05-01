@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-nativ
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Calendar, Package, Flame, PackageOpen, Snowflake, Truck, Eye, MapPin, ChevronRight, X } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
-import { cn } from '../src/lib/utils';
+import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
 import { addDays, startOfDay } from 'date-fns';
 import ProductLabel from '../src/components/ProductLabel';
@@ -33,6 +33,8 @@ export default function AddProductScreen() {
   const [temperature, setTemperature] = useState(existingProduct?.temperature?.toString() || '');
   const [origin, setOrigin] = useState(existingProduct?.origin || '');
   const [showPreview, setShowPreview] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [duplicateId, setDuplicateId] = useState<string | null>(null);
 
   const handleActionTypeChange = (type: ActionType) => {
     setActionType(type);
@@ -46,6 +48,11 @@ export default function AddProductScreen() {
 
   const handleSubmit = () => {
     if (!name || !quantity || !bacId) return;
+    const dupe = findDuplicateProduct(products, bacId, name, params.productId);
+    if (dupe) {
+      setDuplicateId(dupe.id);
+      return;
+    }
     const productData = {
       bacId, name,
       quantity: parseFloat(quantity), unit, dlc, actionType,
@@ -56,13 +63,23 @@ export default function AddProductScreen() {
     };
     if (editMode && params.productId) updateProduct(params.productId, productData);
     else addProduct(productData);
-    router.back();
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+      router.back();
+    }, 1200);
   };
 
   const selectedBac = bacs.find((b) => b.id === bacId);
   const selectedShelf = shelves.find((s) => s.id === selectedBac?.shelfId);
   const selectedUnit = storageUnits.find((u) => u.id === selectedShelf?.unitId);
   const selectedZone = zones.find((z) => z.id === selectedUnit?.zoneId);
+
+  const missingFields: string[] = [];
+  if (!name.trim()) missingFields.push('Nom');
+  if (!quantity.trim() || isNaN(parseFloat(quantity)) || parseFloat(quantity) <= 0) missingFields.push('Quantité');
+  if (!bacId) missingFields.push('Emplacement');
+  const isValid = missingFields.length === 0;
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -108,9 +125,6 @@ export default function AddProductScreen() {
               </Pressable>
             </View>
             <Pressable onPress={() => setIsSelectingBac(true)} className="bg-white border-2 border-gray-100 p-4 rounded-2xl flex-row items-center gap-4">
-              <View className="w-12 h-12 rounded-xl bg-gray-50 items-center justify-center">
-                <Text className="text-2xl">{selectedBac?.icon || '📦'}</Text>
-              </View>
               <View className="flex-1">
                 <Text className="text-sm font-black text-gray-900 uppercase">{selectedBac?.name || 'Sélectionner'}</Text>
                 <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
@@ -225,15 +239,67 @@ export default function AddProductScreen() {
         </View>
       </ScrollView>
 
-      <View className="p-6 bg-white border-t border-gray-100 flex-row gap-4">
-        <Pressable onPress={() => router.back()} className="flex-1 bg-gray-50 py-4 rounded-2xl">
-          <Text className="text-gray-400 font-bold uppercase text-xs text-center">Annuler</Text>
-        </Pressable>
-        <Pressable onPress={handleSubmit} className="flex-[2] bg-primary py-4 rounded-2xl flex-row items-center justify-center gap-2">
-          <Check size={20} color="#fff" />
-          <Text className="text-white font-bold">{editMode ? 'ENREGISTRER' : 'AJOUTER'}</Text>
-        </Pressable>
+      <View className="p-6 bg-white border-t border-gray-100 gap-2">
+        {!isValid && (
+          <Text className="text-[9px] font-bold text-amber-500 uppercase tracking-widest text-center">
+            {missingFields.join(' • ')} requis
+          </Text>
+        )}
+        <View className="flex-row gap-4">
+          <Pressable onPress={() => router.back()} className="flex-1 bg-gray-50 py-4 rounded-2xl">
+            <Text className="text-gray-400 font-bold uppercase text-xs text-center">Annuler</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleSubmit}
+            disabled={!isValid}
+            className={cn('flex-[2] py-4 rounded-2xl flex-row items-center justify-center gap-2', isValid ? 'bg-primary' : 'bg-gray-200')}
+          >
+            <Check size={20} color={isValid ? '#fff' : '#9CA3AF'} />
+            <Text className={cn('font-bold', isValid ? 'text-white' : 'text-gray-400')}>{editMode ? 'ENREGISTRER' : 'AJOUTER'}</Text>
+          </Pressable>
+        </View>
       </View>
+
+      <Modal visible={!!duplicateId} transparent animationType="fade" onRequestClose={() => setDuplicateId(null)}>
+        <View className="flex-1 bg-black/60 items-center justify-center p-6">
+          <View className="bg-white w-full rounded-3xl p-8 gap-6" style={{ maxWidth: 400 }}>
+            <View className="items-center gap-2">
+              <View className="w-16 h-16 rounded-full bg-amber-50 items-center justify-center mb-2">
+                <Check size={28} color="#F59E0B" />
+              </View>
+              <Text className="text-xl font-black uppercase text-gray-900 text-center">Étiquette existe déjà</Text>
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
+                Un produit "{name}" actif est déjà sur ce support
+              </Text>
+            </View>
+            <View className="gap-3">
+              <Pressable
+                onPress={() => {
+                  const pid = duplicateId;
+                  setDuplicateId(null);
+                  if (pid) router.replace({ pathname: '/add-product', params: { productId: pid, editMode: 'true' } });
+                }}
+                className="bg-primary py-4 rounded-2xl"
+              >
+                <Text className="text-white font-black uppercase text-xs text-center">Voir l'étiquette</Text>
+              </Pressable>
+              <Pressable onPress={() => setDuplicateId(null)} className="bg-gray-50 py-4 rounded-2xl">
+                <Text className="text-gray-400 font-black uppercase text-xs text-center">Annuler</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showSuccess} transparent animationType="fade">
+        <View className="flex-1 bg-primary items-center justify-center p-8">
+          <View className="w-24 h-24 rounded-full bg-white/20 items-center justify-center mb-6">
+            <Check size={48} color="#fff" />
+          </View>
+          <Text className="text-3xl font-black uppercase text-white text-center mb-2">Étiquette Créée !</Text>
+          <Text className="text-white/70 text-sm font-bold uppercase tracking-widest">Enregistré</Text>
+        </View>
+      </Modal>
 
       <Modal visible={isSelectingBac} transparent animationType="slide" onRequestClose={() => setIsSelectingBac(false)}>
         <View className="flex-1 bg-black/60 justify-end">
@@ -252,7 +318,6 @@ export default function AddProductScreen() {
               {!selectionPath.zoneId && zones.map((zone) => (
                 <Pressable key={zone.id} onPress={() => setSelectionPath({ zoneId: zone.id })} className="bg-gray-50 p-4 rounded-2xl flex-row items-center justify-between">
                   <View className="flex-row items-center gap-4">
-                    <Text className="text-2xl">{zone.icon}</Text>
                     <Text className="text-sm font-black text-gray-900 uppercase">{zone.name}</Text>
                   </View>
                   <ChevronRight size={16} color="#D1D5DB" />
@@ -262,7 +327,6 @@ export default function AddProductScreen() {
               {selectionPath.zoneId && !selectionPath.unitId && storageUnits.filter((u) => u.zoneId === selectionPath.zoneId).map((u) => (
                 <Pressable key={u.id} onPress={() => setSelectionPath({ ...selectionPath, unitId: u.id })} className="bg-gray-50 p-4 rounded-2xl flex-row items-center justify-between">
                   <View className="flex-row items-center gap-4">
-                    <Text className="text-2xl">{u.icon}</Text>
                     <Text className="text-sm font-black text-gray-900 uppercase">{u.name}</Text>
                   </View>
                   <ChevronRight size={16} color="#D1D5DB" />
@@ -288,7 +352,6 @@ export default function AddProductScreen() {
                   className={cn('p-4 rounded-2xl flex-row items-center justify-between border-2', bacId === bac.id ? 'bg-primary/5 border-primary' : 'bg-gray-50 border-transparent')}
                 >
                   <View className="flex-row items-center gap-4">
-                    <Text className="text-2xl">{bac.icon}</Text>
                     <Text className={cn('text-sm font-black uppercase', bacId === bac.id ? 'text-primary' : 'text-gray-900')}>{bac.name}</Text>
                   </View>
                   {bacId === bac.id && <Check size={16} color="#10B981" />}

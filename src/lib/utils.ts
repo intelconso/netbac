@@ -42,3 +42,20 @@ export function getDayColor(timestamp: number): string {
 export function randomId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+
+type ProductForDupeCheck = { id: string; bacId: string; name: string; status: 'active' | 'used' | 'discarded' };
+
+export function findDuplicateProduct<T extends ProductForDupeCheck>(
+  products: T[],
+  bacId: string,
+  name: string,
+  excludeId?: string,
+): T | undefined {
+  const target = name.trim().toLowerCase();
+  return products.find((p) =>
+    p.id !== excludeId &&
+    p.status === 'active' &&
+    p.bacId === bacId &&
+    p.name.trim().toLowerCase() === target,
+  );
+}

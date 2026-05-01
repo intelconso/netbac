@@ -1,7 +1,9 @@
+export type ZoneType = 'cuisine' | 'chambre_froide' | 'bar' | 'reserve' | 'plonge' | 'patisserie' | 'autre';
+
 export interface Zone {
   id: string;
   name: string;
-  icon: string;
+  type: ZoneType;
 }
 
 export interface StorageUnit {
@@ -9,7 +11,6 @@ export interface StorageUnit {
   zoneId: string;
   name: string; // e.g., "Frigo 1", "Chambre Froide"
   type: 'frigo' | 'congelateur' | 'reserve' | 'saladette' | 'autre';
-  icon: string;
 }
 
 export interface Shelf {
@@ -27,8 +28,6 @@ export interface Bac {
   shelfId: string; // Linked to a shelf
   name: string;
   type: ContainerType;
-  color: string;
-  icon: string;
   createdAt: number;
   syncStatus: 'synced' | 'pending' | 'offline';
 }

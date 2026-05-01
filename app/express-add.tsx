@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText, Edit2 } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
-import { cn } from '../src/lib/utils';
+import { cn, findDuplicateProduct } from '../src/lib/utils';
+import ZoneIcon from '../src/components/ZoneIcon';
+import UnitIcon from '../src/components/UnitIcon';
 import { addDays, startOfDay } from 'date-fns';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ExpressAddScreen() {
   const router = useRouter();
-  const { zones, storageUnits, shelves, bacs, addProduct, user } = useStore();
+  const { zones, storageUnits, shelves, bacs, addProduct, products, user } = useStore();
 
   const [step, setStep] = useState<'zone' | 'unit' | 'shelf' | 'bac'>('zone');
   const [selection, setSelection] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>({});
@@ -17,6 +19,7 @@ export default function ExpressAddScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
   const [isBatchMode, setIsBatchMode] = useState(false);
+  const [duplicateBac, setDuplicateBac] = useState<{ id: string; productId: string } | null>(null);
 
   const handleZoneSelect = (zoneId: string) => {
     const zoneUnits = storageUnits.filter((u) => u.zoneId === zoneId);
@@ -55,6 +58,11 @@ export default function ExpressAddScreen() {
   const handleBacSelect = (bacId: string) => {
     const bac = bacs.find((b) => b.id === bacId);
     if (!bac) return;
+    const existing = findDuplicateProduct(products, bacId, bac.name);
+    if (existing) {
+      setDuplicateBac({ id: bacId, productId: existing.id });
+      return;
+    }
     const newId = addProduct({
       bacId, name: bac.name, quantity: 1, unit: 'pce',
       dlc: addDays(startOfDay(new Date()), 3).getTime(),
@@ -62,8 +70,12 @@ export default function ExpressAddScreen() {
       preparerName: user?.name,
       batchNumber: batchNumber || undefined,
     });
-    setSuccessProduct(newId);
-    if (isBatchMode) setTimeout(() => setSuccessProduct(null), 1500);
+    if (isBatchMode) {
+      setSuccessProduct(newId);
+      setTimeout(() => setSuccessProduct(null), 1500);
+    } else {
+      router.replace({ pathname: '/add-product', params: { productId: newId, editMode: 'true' } });
+    }
   };
 
   const filteredBacs = bacs.filter((b) => b.shelfId === selection.shelfId);
@@ -101,7 +113,7 @@ export default function ExpressAddScreen() {
           </View>
           <Pressable onPress={() => setIsBatchMode(!isBatchMode)} className={cn('px-3 py-1.5 rounded-lg', isBatchMode ? 'bg-primary' : 'bg-white/5')}>
             <Text className={cn('text-[8px] font-black uppercase tracking-widest', isBatchMode ? 'text-white' : 'text-white/40')}>
-              Rafale: {isBatchMode ? 'ON' : 'OFF'}
+              Multi: {isBatchMode ? 'ON' : 'OFF'}
             </Text>
           </Pressable>
         </View>
@@ -130,7 +142,6 @@ export default function ExpressAddScreen() {
                     return (
                       <View key={bac.id} className="w-1/2 p-1.5">
                         <Pressable onPress={() => handleBacSelect(bac.id)} className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center gap-3">
-                          <Text className="text-2xl">{bac.icon}</Text>
                           <View className="flex-1">
                             <Text className="text-[10px] font-black text-gray-900 uppercase" numberOfLines={1}>{bac.name}</Text>
                             <Text className="text-[7px] font-bold text-gray-400 uppercase" numberOfLines={1}>{zone?.name} &gt; {unit?.name}</Text>
@@ -151,7 +162,7 @@ export default function ExpressAddScreen() {
                   <Pressable key={zone.id} onPress={() => handleZoneSelect(zone.id)} className="bg-white p-5 rounded-3xl border border-gray-100 flex-row items-center justify-between">
                     <View className="flex-row items-center gap-4">
                       <View className="w-14 h-14 rounded-2xl bg-gray-50 items-center justify-center">
-                        <Text className="text-3xl">{zone.icon}</Text>
+                        <ZoneIcon type={zone.type} size={24} />
                       </View>
                       <View>
                         <Text className="text-sm font-black text-gray-900 uppercase">{zone.name}</Text>
@@ -197,7 +208,7 @@ export default function ExpressAddScreen() {
               <Pressable key={unit.id} onPress={() => handleUnitSelect(unit.id)} className="bg-white p-5 rounded-3xl border border-gray-100 flex-row items-center justify-between">
                 <View className="flex-row items-center gap-4">
                   <View className="w-14 h-14 rounded-2xl bg-gray-50 items-center justify-center">
-                    <Text className="text-3xl">{unit.icon}</Text>
+                    <UnitIcon type={unit.type} size={24} />
                   </View>
                   <View>
                     <Text className="text-sm font-black text-gray-900 uppercase">{unit.name}</Text>
@@ -262,7 +273,6 @@ export default function ExpressAddScreen() {
                 {filteredBacs.map((bac) => (
                   <View key={bac.id} className="w-1/2 p-1.5">
                     <Pressable onPress={() => handleBacSelect(bac.id)} className="bg-white p-6 rounded-3xl border border-gray-100 items-center gap-3">
-                      <Text className="text-4xl">{bac.icon}</Text>
                       <Text className="text-[10px] font-black text-gray-900 uppercase text-center">{bac.name}</Text>
                     </Pressable>
                   </View>
@@ -289,29 +299,42 @@ export default function ExpressAddScreen() {
         )}
       </ScrollView>
 
+      <Modal visible={!!duplicateBac} transparent animationType="fade" onRequestClose={() => setDuplicateBac(null)}>
+        <View className="flex-1 bg-black/60 items-center justify-center p-6">
+          <View className="bg-white w-full rounded-3xl p-8 gap-6" style={{ maxWidth: 400 }}>
+            <View className="items-center gap-2">
+              <View className="w-16 h-16 rounded-full bg-amber-50 items-center justify-center mb-2">
+                <FileText size={28} color="#F59E0B" />
+              </View>
+              <Text className="text-xl font-black uppercase text-gray-900 text-center">Étiquette existe déjà</Text>
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Un produit actif est déjà sur ce support</Text>
+            </View>
+            <View className="gap-3">
+              <Pressable
+                onPress={() => {
+                  const pid = duplicateBac?.productId;
+                  setDuplicateBac(null);
+                  if (pid) router.replace({ pathname: '/add-product', params: { productId: pid, editMode: 'true' } });
+                }}
+                className="bg-primary py-4 rounded-2xl"
+              >
+                <Text className="text-white font-black uppercase text-xs text-center">Voir l'étiquette</Text>
+              </Pressable>
+              <Pressable onPress={() => setDuplicateBac(null)} className="bg-gray-50 py-4 rounded-2xl">
+                <Text className="text-gray-400 font-black uppercase text-xs text-center">Annuler</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={!!successProduct} transparent animationType="fade">
         <View className="flex-1 bg-primary items-center justify-center p-8">
           <View className="w-24 h-24 rounded-full bg-white/20 items-center justify-center mb-6">
             <Check size={48} color="#fff" />
           </View>
           <Text className="text-3xl font-black uppercase text-white text-center mb-2">Étiquette Créée !</Text>
-          <Text className="text-white/70 text-sm font-bold uppercase tracking-widest mb-12">Enregistré</Text>
-          <View className="w-full gap-3">
-            <Pressable onPress={() => { setSuccessProduct(null); router.push('/'); }} className="bg-white py-5 rounded-2xl">
-              <Text className="text-primary font-black uppercase text-xs text-center">Terminer</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                const pid = successProduct;
-                setSuccessProduct(null);
-                if (pid) router.push({ pathname: '/add-product', params: { productId: pid, editMode: 'true' } });
-              }}
-              className="bg-white/10 py-5 rounded-2xl flex-row items-center justify-center gap-2"
-            >
-              <Edit2 size={16} color="#fff" />
-              <Text className="text-white font-black uppercase text-xs">Modifier</Text>
-            </Pressable>
-          </View>
+          <Text className="text-white/70 text-sm font-bold uppercase tracking-widest">Enregistré</Text>
         </View>
       </Modal>
     </SafeAreaView>

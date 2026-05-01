@@ -42,12 +42,6 @@ jest.mock('expo-notifications', () => ({
   SchedulableTriggerInputTypes: { DATE: 'date' },
 }));
 
-jest.mock('react-native-qrcode-svg', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return ({ value }) => React.createElement(View, { testID: 'qr-svg', 'data-value': value });
-});
-
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     push: jest.fn(),

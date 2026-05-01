@@ -97,11 +97,10 @@ function RootInner() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F9FAFB' } }}>
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="bac/[id]" />
+            <Stack.Screen name="container/[id]" />
             <Stack.Screen name="unit/[id]" />
             <Stack.Screen name="add-product" />
             <Stack.Screen name="express-add" />
-            <Stack.Screen name="labels" />
             <Stack.Screen name="journal" />
             <Stack.Screen name="history" />
             <Stack.Screen name="reports" />

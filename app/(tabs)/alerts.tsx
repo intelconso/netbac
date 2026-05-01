@@ -15,12 +15,9 @@ function AlertCard({ alert }: { alert: AlertWithBac }) {
   const router = useRouter();
   return (
     <Pressable
-      onPress={() => router.push(`/bac/${alert.bacId}` as any)}
+      onPress={() => router.push(`/container/${alert.bacId}` as any)}
       className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center gap-4"
     >
-      <View className="w-12 h-12 rounded-xl bg-gray-50 items-center justify-center">
-        <Text className="text-xl">{alert.bac?.icon}</Text>
-      </View>
       <View className="flex-1">
         <Text className="font-bold text-gray-900">{alert.name}</Text>
         <Text className="text-[10px] font-bold text-gray-400 uppercase">

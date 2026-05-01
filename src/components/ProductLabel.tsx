@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
 import {
   Flame, PackageOpen, Snowflake, Truck, User as UserIcon, Thermometer, Calendar, Clock, Hash, MapPin,
 } from 'lucide-react-native';
@@ -160,17 +159,6 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
                   </Text>
                 </View>
               </View>
-            </View>
-            <View className="items-center gap-1" testID="qr-code">
-              <QRCode
-                value={`NETBAC:${product.id}`}
-                size={isLg ? 72 : 40}
-                color="#111827"
-                backgroundColor="#fff"
-              />
-              <Text className={cn('font-mono font-bold text-gray-400', isLg ? 'text-[8px]' : 'text-[5px]')}>
-                NB-{product.id.slice(0, 8).toUpperCase()}
-              </Text>
             </View>
           </View>
         </View>

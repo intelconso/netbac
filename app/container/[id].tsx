@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Plus, Trash2, CheckCircle2, History } from 'lucide-react-native';
+import { ArrowLeft, Trash2, CheckCircle2, History } from 'lucide-react-native';
 import { useStore } from '../../src/lib/store';
 import { cn, formatDate, getDaysRemaining } from '../../src/lib/utils';
 import ProductLabel from '../../src/components/ProductLabel';
@@ -38,9 +38,6 @@ export default function BacDetailScreen() {
           <ArrowLeft size={20} color="#9CA3AF" />
         </Pressable>
         <View className="flex-row items-center gap-3">
-          <View className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
-            <Text className="text-2xl">{bac.icon}</Text>
-          </View>
           <View>
             <Text className="text-sm font-black text-gray-900 uppercase">BAC {bac.name}</Text>
             <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Détails du support</Text>
@@ -83,9 +80,6 @@ export default function BacDetailScreen() {
             {bacProducts.length === 0 && (
               <View className="py-12 items-center gap-2">
                 <Text className="text-sm text-gray-400 font-medium">Ce bac est vide</Text>
-                <Pressable onPress={() => router.push({ pathname: '/add-product', params: { bacId: bac.id } })}>
-                  <Text className="text-xs font-bold text-primary uppercase">+ Ajouter un produit</Text>
-                </Pressable>
               </View>
             )}
           </View>
@@ -109,20 +103,10 @@ export default function BacDetailScreen() {
         )}
       </ScrollView>
 
-      <View className="p-6 bg-white border-t border-gray-100">
-        <Pressable
-          onPress={() => router.push({ pathname: '/add-product', params: { bacId: bac.id } })}
-          className="bg-primary py-4 rounded-2xl flex-row items-center justify-center gap-2"
-        >
-          <Plus size={20} color="#fff" />
-          <Text className="text-white font-bold">AJOUTER DANS CE BAC</Text>
-        </Pressable>
-      </View>
-
-      <Modal visible={!!selectedProduct} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
+<Modal visible={!!selectedProduct} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
         <Pressable onPress={() => setSelectedProduct(null)} className="flex-1 bg-black/90 items-center justify-center p-6">
           <View className="w-full bg-white rounded-3xl overflow-hidden" style={{ maxWidth: 400 }}>
-            {selectedProduct && <ProductLabel product={selectedProduct} size="lg" />}
+            {selectedProduct && <ProductLabel product={selectedProduct} />}
             <Pressable onPress={() => setSelectedProduct(null)} className="py-6 bg-gray-900">
               <Text className="text-white font-black uppercase tracking-widest text-[10px] text-center">Fermer</Text>
             </Pressable>

@@ -32,14 +32,14 @@ interface StoreActions {
 
 const INITIAL_STATE: AppState = {
   zones: [
-    { id: 'z1', name: 'Cuisine', icon: '👨‍🍳' },
-    { id: 'z2', name: 'Bar', icon: '🍸' },
-    { id: 'z3', name: 'Réserve', icon: '📦' },
+    { id: 'z1', name: 'Cuisine', type: 'cuisine' },
+    { id: 'z2', name: 'Bar', type: 'bar' },
+    { id: 'z3', name: 'Réserve', type: 'reserve' },
   ],
   storageUnits: [
-    { id: 'u1', zoneId: 'z1', name: 'Frigo 1', type: 'frigo', icon: '❄️' },
-    { id: 'u2', zoneId: 'z1', name: 'Frigo 2', type: 'frigo', icon: '❄️' },
-    { id: 'u3', zoneId: 'z3', name: 'Étagère Sèche', type: 'reserve', icon: '🥫' },
+    { id: 'u1', zoneId: 'z1', name: 'Frigo 1', type: 'frigo' },
+    { id: 'u2', zoneId: 'z1', name: 'Frigo 2', type: 'frigo' },
+    { id: 'u3', zoneId: 'z3', name: 'Étagère Sèche', type: 'reserve' },
   ],
   shelves: [
     { id: 's1', unitId: 'u1', level: 1, name: 'Niveau Haut' },
@@ -47,9 +47,9 @@ const INITIAL_STATE: AppState = {
     { id: 's3', unitId: 'u1', level: 3, name: 'Niveau Bas' },
   ],
   bacs: [
-    { id: '1', shelfId: 's1', name: 'POULET', type: 'bac', color: '#10B981', icon: '🍗', createdAt: Date.now(), syncStatus: 'synced' },
-    { id: '2', shelfId: 's2', name: 'POISSON', type: 'bac', color: '#3B82F6', icon: '🐟', createdAt: Date.now(), syncStatus: 'synced' },
-    { id: '3', shelfId: 's3', name: 'LÉGUMES', type: 'boite', color: '#84CC16', icon: '🥬', createdAt: Date.now(), syncStatus: 'synced' },
+    { id: '1', shelfId: 's1', name: 'POULET', type: 'bac', createdAt: Date.now(), syncStatus: 'synced' },
+    { id: '2', shelfId: 's2', name: 'POISSON', type: 'bac', createdAt: Date.now(), syncStatus: 'synced' },
+    { id: '3', shelfId: 's3', name: 'LÉGUMES', type: 'boite', createdAt: Date.now(), syncStatus: 'synced' },
   ],
   products: [],
   logs: [],
@@ -237,7 +237,11 @@ export const useStore = create<AppState & StoreActions>()(
 
 export async function switchStoreToUser(uid: string | null) {
   const newKey = uid ? `netbac-storage-${uid}` : 'netbac-storage-anon';
-  useStore.getState().resetState();
   useStore.persist.setOptions({ name: newKey });
-  await useStore.persist.rehydrate();
+  const stored = await AsyncStorage.getItem(newKey);
+  if (stored) {
+    await useStore.persist.rehydrate();
+  } else {
+    useStore.getState().resetState();
+  }
 }
