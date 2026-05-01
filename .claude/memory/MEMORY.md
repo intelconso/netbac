@@ -1,0 +1,2 @@
+- [Never run gradle builds](feedback_no_gradle_builds.md) — user's PC freezes during `./gradlew` invocations; always hand the command over for them to run in a separate terminal
+- [Use TDD approach](feedback_tdd_approach.md) — write failing Jest test before non-trivial logic; bug fixes get a regression test first
