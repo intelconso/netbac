@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Scan, Plus, AlertTriangle } from 'lucide-react-native';
+import { Scan, Plus, AlertTriangle, FileText } from 'lucide-react-native';
 import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import { useStore } from '../../src/lib/store';
@@ -76,6 +76,13 @@ export default function HomeScreen() {
         >
           <Text className="text-[9px] font-bold text-gray-400 uppercase" numberOfLines={1} adjustsFontSizeToFit>Aujourd'hui</Text>
           <Text className="text-2xl font-black text-primary">{todayCount}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => router.push('/reports' as any)}
+          className="flex-1 bg-white p-4 rounded-2xl border border-gray-100 gap-1 active:bg-gray-50"
+        >
+          <Text className="text-[9px] font-bold text-gray-400 uppercase" numberOfLines={1} adjustsFontSizeToFit>Rapports</Text>
+          <FileText size={20} color="#374151" />
         </Pressable>
       </View>
 

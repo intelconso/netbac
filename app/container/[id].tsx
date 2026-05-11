@@ -28,7 +28,9 @@ export default function BacDetailScreen() {
 
   const bac = bacs.find((b) => b.id === id);
   const bacProducts = products.filter((p) => p.bacId === id && p.status === 'active');
-  const history = products.filter((p) => p.bacId === id && p.status !== 'active').slice(0, 5);
+  const history = products
+    .filter((p) => p.bacId === id && p.status !== 'active')
+    .sort((a, b) => b.modifiedAt - a.modifiedAt);
 
   if (!bac) {
     return (
@@ -103,15 +105,32 @@ export default function BacDetailScreen() {
           <View className="gap-4">
             <View className="flex-row items-center gap-2">
               <History size={14} color="#9CA3AF" />
-              <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest">Historique récent</Text>
+              <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest">Historique ({history.length})</Text>
             </View>
             <View className="gap-2">
-              {history.map((item) => (
-                <View key={item.id} className="flex-row justify-between bg-gray-50 p-2 rounded-lg">
-                  <Text className="text-[10px] font-medium text-gray-400">{formatDate(item.modifiedAt)} — {item.name}</Text>
-                  <Text className="text-[10px] font-medium text-gray-400 uppercase">{item.status === 'used' ? 'Utilisé' : 'Jeté'}</Text>
-                </View>
-              ))}
+              {history.map((item) => {
+                const isUsed = item.status === 'used';
+                return (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => setSelectedProduct(item)}
+                    className="bg-white p-3 rounded-xl border border-gray-100 flex-row items-center gap-3 active:bg-gray-50"
+                  >
+                    <View className={cn('w-1 h-10 rounded-full', isUsed ? 'bg-success' : 'bg-danger')} />
+                    <View className="flex-1">
+                      <Text className="text-sm font-black text-gray-900 uppercase" numberOfLines={1}>{item.name}</Text>
+                      <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5" numberOfLines={1}>
+                        {item.quantity} {item.unit} · {formatDate(item.modifiedAt)}
+                      </Text>
+                    </View>
+                    <View className={cn('px-2.5 py-1 rounded-lg', isUsed ? 'bg-success/10' : 'bg-danger/10')}>
+                      <Text className={cn('text-[9px] font-black uppercase tracking-widest', isUsed ? 'text-success' : 'text-danger')}>
+                        {isUsed ? 'Utilisé' : 'Jeté'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         )}

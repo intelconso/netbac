@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2 } from 'lucide-react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2, FileText } from 'lucide-react-native';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useStore } from '../../src/lib/store';
@@ -15,6 +15,7 @@ import ZoneIcon from '../../src/components/ZoneIcon';
 import SyncRow from '../../src/components/SyncRow';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const {
     zones, storageUnits, shelves, bacs,
     addZone, deleteZone,
@@ -100,9 +101,10 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'units'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'units' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
+    { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
   if (section === 'menu') {
@@ -119,7 +121,10 @@ export default function SettingsScreen() {
             return (
               <Pressable
                 key={item.id}
-                onPress={() => setSection(item.id)}
+                onPress={() => {
+                  if (item.id === 'reports') router.push('/reports' as any);
+                  else setSection(item.id);
+                }}
                 className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center gap-4"
               >
                 <View className="w-12 h-12 rounded-xl bg-primary/10 items-center justify-center">

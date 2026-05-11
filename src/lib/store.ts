@@ -220,7 +220,7 @@ export const useStore = create<AppState & StoreActions>()(
             timestamp: Date.now(),
             userId: user?.id || 'unknown',
             userName: user?.name || 'Inconnu',
-          } as ActivityLog, ...state.logs].slice(0, 100),
+          } as ActivityLog, ...state.logs],
         }));
       },
 

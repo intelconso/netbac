@@ -79,7 +79,6 @@ export default function TabsLayout() {
         />
         {/* Hidden until core flow is solid — files preserved on disk */}
         <Tabs.Screen name="alerts" options={{ href: null }} />
-        <Tabs.Screen name="export" options={{ href: null }} />
       </Tabs>
     </View>
   );
