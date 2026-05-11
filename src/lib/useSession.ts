@@ -7,17 +7,20 @@ export type SessionState = {
   initializing: boolean;
 };
 
+// Combined into one state object so user + initializing always update together
+// in a single render. Two separate setStates in an external callback can render
+// (initializing=false, user=null) for one frame, briefly flashing /login.
+type SessionInternal = { user: FirebaseAuthTypes.User | null; initializing: boolean };
+
 export function useSession(): SessionState {
-  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
-  const [initializing, setInitializing] = useState(true);
+  const [s, setS] = useState<SessionInternal>({ user: null, initializing: true });
 
   useEffect(() => {
     const unsub = onAuthChange((u) => {
-      setUser(u);
-      setInitializing(false);
+      setS({ user: u, initializing: false });
     });
     return unsub;
   }, []);
 
-  return { user, initializing };
+  return s;
 }

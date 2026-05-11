@@ -60,6 +60,25 @@ describe('zone CRUD', () => {
   });
 });
 
+describe('applyCloudState (regression: action functions must not be nulled)', () => {
+  it('does not overwrite live action functions even if cloud doc carries null for them', () => {
+    const before = useStore.getState().setSyncState;
+    expect(typeof before).toBe('function');
+    // Simulate a stale cloud doc that was written before partialize (contains null actions)
+    useStore.getState().applyCloudState({
+      // @ts-expect-error testing runtime defense
+      setSyncState: null,
+      // @ts-expect-error testing runtime defense
+      addProduct: null,
+      // legitimate data updates should still go through
+      zones: [{ id: 'cloud-z', name: 'Cuisine Cloud', type: 'cuisine' }],
+    });
+    expect(typeof useStore.getState().setSyncState).toBe('function');
+    expect(typeof useStore.getState().addProduct).toBe('function');
+    expect(useStore.getState().zones[0].id).toBe('cloud-z');
+  });
+});
+
 describe('switchStoreToUser', () => {
   it('preserves a user\'s data across logout/login (regression: deleted-zone-reappearing bug)', async () => {
     // 1. Sign in as user A — creates user-specific storage key

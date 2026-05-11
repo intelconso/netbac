@@ -27,39 +27,25 @@ interface StoreActions {
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
+  setSyncState: (state: { status?: AppState['lastSyncStatus']; at?: number | null; error?: string | null }) => void;
+  applyCloudState: (cloud: Partial<AppState>) => void;
   resetState: () => void;
 }
 
 const INITIAL_STATE: AppState = {
-  zones: [
-    { id: 'z1', name: 'Cuisine', type: 'cuisine' },
-    { id: 'z2', name: 'Bar', type: 'bar' },
-    { id: 'z3', name: 'Réserve', type: 'reserve' },
-  ],
-  storageUnits: [
-    { id: 'u1', zoneId: 'z1', name: 'Frigo 1', type: 'frigo' },
-    { id: 'u2', zoneId: 'z1', name: 'Frigo 2', type: 'frigo' },
-    { id: 'u3', zoneId: 'z3', name: 'Étagère Sèche', type: 'reserve' },
-  ],
-  shelves: [
-    { id: 's1', unitId: 'u1', level: 1, name: 'Niveau Haut' },
-    { id: 's2', unitId: 'u1', level: 2, name: 'Niveau Milieu' },
-    { id: 's3', unitId: 'u1', level: 3, name: 'Niveau Bas' },
-  ],
-  bacs: [
-    { id: '1', shelfId: 's1', name: 'POULET', type: 'bac', createdAt: Date.now(), syncStatus: 'synced' },
-    { id: '2', shelfId: 's2', name: 'POISSON', type: 'bac', createdAt: Date.now(), syncStatus: 'synced' },
-    { id: '3', shelfId: 's3', name: 'LÉGUMES', type: 'boite', createdAt: Date.now(), syncStatus: 'synced' },
-  ],
+  zones: [],
+  storageUnits: [],
+  shelves: [],
+  bacs: [],
   products: [],
   logs: [],
   tempLogs: [],
-  cleaningTasks: [
-    { id: 'c1', unitId: 'u1', name: 'Nettoyage intérieur', frequency: 'weekly', nextDue: Date.now() },
-    { id: 'c2', unitId: 'u2', name: 'Nettoyage intérieur', frequency: 'weekly', nextDue: Date.now() },
-  ],
+  cleaningTasks: [],
   user: null,
   isOffline: false,
+  lastSyncAt: null,
+  lastSyncStatus: 'idle',
+  lastSyncError: null,
 };
 
 export const useStore = create<AppState & StoreActions>()(
@@ -226,11 +212,67 @@ export const useStore = create<AppState & StoreActions>()(
 
       setOffline: (isOffline) => set({ isOffline }),
 
+      setSyncState: ({ status, at, error }) =>
+        set((state) => ({
+          lastSyncStatus: status ?? state.lastSyncStatus,
+          lastSyncAt: at !== undefined ? at : state.lastSyncAt,
+          lastSyncError: error !== undefined ? error : state.lastSyncError,
+        })),
+
+      applyCloudState: (cloud) =>
+        set((state) => {
+          const merged: Record<string, unknown> = { ...state };
+          if (cloud && typeof cloud === 'object') {
+            const c = cloud as Record<string, unknown>;
+            const s = state as unknown as Record<string, unknown>;
+            for (const key in c) {
+              if (c[key] === undefined) continue;
+              // Never let cloud data overwrite a live action function
+              if (typeof s[key] === 'function') continue;
+              merged[key] = c[key];
+            }
+          }
+          return merged as unknown as AppState & StoreActions;
+        }),
+
       resetState: () => set(INITIAL_STATE),
     }),
     {
       name: 'netbac-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      // Persist only data fields. If we don't whitelist these, zustand serializes
+      // action functions too — they become undefined in JSON and on rehydrate
+      // overwrite the real actions, leaving the store with `setSyncState` etc. as null.
+      partialize: (state): AppState => ({
+        zones: state.zones,
+        storageUnits: state.storageUnits,
+        shelves: state.shelves,
+        bacs: state.bacs,
+        products: state.products,
+        logs: state.logs,
+        tempLogs: state.tempLogs,
+        cleaningTasks: state.cleaningTasks,
+        user: state.user,
+        isOffline: state.isOffline,
+        lastSyncAt: state.lastSyncAt,
+        lastSyncStatus: state.lastSyncStatus,
+        lastSyncError: state.lastSyncError,
+      }),
+      // Defensive merge: even if older persisted snapshots contain undefined
+      // action keys, never let them override real functions.
+      merge: (persistedState, currentState) => {
+        const merged: Record<string, unknown> = { ...currentState };
+        if (persistedState && typeof persistedState === 'object') {
+          const p = persistedState as Record<string, unknown>;
+          const c = currentState as unknown as Record<string, unknown>;
+          for (const key in p) {
+            if (p[key] === undefined) continue;
+            if (typeof c[key] === 'function') continue;
+            merged[key] = p[key];
+          }
+        }
+        return merged as unknown as AppState & StoreActions;
+      },
     }
   )
 );

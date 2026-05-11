@@ -8,6 +8,13 @@ expo-env.d.ts
 
 node_modules/
 .expo/
+
+# Release signing — never commit
+android/keystore.properties
+android/app/netbac-release.keystore
+*.jks
+.env
+.env.local
 dist/
 android/build/
 android/app/build/

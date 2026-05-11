@@ -94,6 +94,8 @@ export interface User {
   };
 }
 
+export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
+
 export interface AppState {
   zones: Zone[];
   storageUnits: StorageUnit[];
@@ -105,4 +107,8 @@ export interface AppState {
   cleaningTasks: CleaningTask[];
   user: User | null;
   isOffline: boolean;
+  // Cloud sync state
+  lastSyncAt: number | null;
+  lastSyncStatus: SyncStatus;
+  lastSyncError: string | null;
 }

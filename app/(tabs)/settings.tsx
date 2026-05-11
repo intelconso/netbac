@@ -1,7 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, X, Boxes, LogOut } from 'lucide-react-native';
+import { signOut } from '../../src/lib/firebase';
+import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useStore } from '../../src/lib/store';
 import { cn } from '../../src/lib/utils';
 import { ContainerType, StorageUnit, ZoneType } from '../../src/types';
@@ -10,6 +12,7 @@ import CreateUnitModal from '../../src/components/CreateUnitModal';
 import CreateBacModal from '../../src/components/CreateBacModal';
 import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
+import SyncRow from '../../src/components/SyncRow';
 
 export default function SettingsScreen() {
   const {
@@ -76,6 +79,24 @@ export default function SettingsScreen() {
     setAddBacShelfId(null);
   };
 
+  const handleSignOut = () => {
+    Alert.alert('Se déconnecter ?', 'Vous serez redirigé vers la page de connexion.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Déconnexion',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await signOutGoogle();
+            await signOut();
+          } catch (e: any) {
+            Alert.alert('Erreur', e?.message || 'Impossible de se déconnecter.');
+          }
+        },
+      },
+    ]);
+  };
+
   const menuItems: { id: 'structure'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
   ];
@@ -108,8 +129,21 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
+          <SyncRow />
         </View>
 
+        <Pressable
+          onPress={handleSignOut}
+          className="bg-white p-4 rounded-2xl border border-red-100 flex-row items-center gap-4 mt-8 active:bg-red-50"
+        >
+          <View className="w-12 h-12 rounded-xl bg-red-50 items-center justify-center">
+            <LogOut size={20} color="#EF4444" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-sm font-black text-red-500 uppercase">Déconnexion</Text>
+            <Text className="text-[9px] font-bold text-red-400 uppercase tracking-widest mt-0.5">Quitter votre compte</Text>
+          </View>
+        </Pressable>
       </ScrollView>
     );
   }

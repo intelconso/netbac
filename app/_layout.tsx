@@ -1,6 +1,6 @@
 import '../global.css';
 import React, { Component, ErrorInfo, ReactNode, useEffect } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -59,7 +59,16 @@ function AuthGate({ children }: { children: ReactNode }) {
     const uid = user?.uid ?? null;
     if (lastUidRef.current !== uid) {
       lastUidRef.current = uid;
-      switchStoreToUser(uid).catch(() => {});
+      switchStoreToUser(uid)
+        .then(() => {
+          if (uid) {
+            // Lazy import to keep the auth path independent of Firestore on cold start
+            import('../src/lib/sync').then((sync) => sync.startSync(uid));
+          } else {
+            import('../src/lib/sync').then((sync) => sync.stopSync());
+          }
+        })
+        .catch(() => {});
     }
     const inAuthGroup = segments[0] === '(auth)';
     if (!user && !inAuthGroup) {
@@ -69,13 +78,10 @@ function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [user, initializing, segments]);
 
-  if (initializing) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F9FAFB' }}>
-        <ActivityIndicator color="#10B981" size="large" />
-      </View>
-    );
-  }
+  // Render nothing while Firebase determines the cached auth state. Otherwise
+  // the router would briefly mount whatever screen the URL points at (often
+  // /login) and then redirect once the session resolves — visible flash.
+  if (initializing) return null;
   return <>{children}</>;
 }
 

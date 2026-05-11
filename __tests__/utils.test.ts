@@ -1,4 +1,4 @@
-import { getDaysRemaining, getStatusColor, formatDate } from '../src/lib/utils';
+import { getDaysRemaining, getStatusColor, formatDate, formatRelativeTime } from '../src/lib/utils';
 
 describe('getDaysRemaining', () => {
   beforeEach(() => {
@@ -52,6 +52,35 @@ describe('getStatusColor', () => {
   it('returns green when more than 2 days remain', () => {
     const fiveDays = Date.now() + 5 * 24 * 60 * 60 * 1000;
     expect(getStatusColor(fiveDays)).toBe('#10B981');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  const now = new Date('2026-05-01T12:00:00Z').getTime();
+
+  it('returns "à l\'instant" for under a minute', () => {
+    expect(formatRelativeTime(now - 30 * 1000, now)).toBe("à l'instant");
+  });
+
+  it('returns minutes for under an hour', () => {
+    expect(formatRelativeTime(now - 5 * 60 * 1000, now)).toBe('il y a 5 min');
+  });
+
+  it('returns hours for under a day', () => {
+    expect(formatRelativeTime(now - 3 * 60 * 60 * 1000, now)).toBe('il y a 3 h');
+  });
+
+  it('returns days for under a week', () => {
+    expect(formatRelativeTime(now - 2 * 24 * 60 * 60 * 1000, now)).toBe('il y a 2 j');
+  });
+
+  it('falls back to formatDate beyond 7 days', () => {
+    const tenDaysAgo = now - 10 * 24 * 60 * 60 * 1000;
+    expect(formatRelativeTime(tenDaysAgo, now)).toBe(formatDate(tenDaysAgo));
+  });
+
+  it('handles future timestamps gracefully', () => {
+    expect(formatRelativeTime(now + 60 * 1000, now)).toBe("à l'instant");
   });
 });
 

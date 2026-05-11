@@ -1,12 +1,10 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Scan, Plus, LogOut, AlertTriangle } from 'lucide-react-native';
+import { Scan, Plus, AlertTriangle } from 'lucide-react-native';
 import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import { useStore } from '../../src/lib/store';
-import { signOut } from '../../src/lib/firebase';
-import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { getDaysRemaining } from '../../src/lib/utils';
 
 export default function HomeScreen() {
@@ -28,32 +26,9 @@ export default function HomeScreen() {
     return activeProducts.filter((p) => p.addedAt >= startOfToday.getTime()).length;
   }, [activeProducts]);
 
-  const handleSignOut = () => {
-    Alert.alert('Se déconnecter ?', 'Vous serez redirigé vers la page de connexion.', [
-      { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Déconnexion',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOutGoogle();
-            await signOut();
-          } catch (e: any) {
-            Alert.alert('Erreur', e?.message || 'Impossible de se déconnecter.');
-          }
-        },
-      },
-    ]);
-  };
-
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 96 }}>
-      <View className="flex-row justify-between items-start">
-        <Text className="text-xl font-black text-gray-900 uppercase">Tableau de Bord</Text>
-        <Pressable onPress={handleSignOut} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center active:bg-gray-100">
-          <LogOut size={16} color="#9CA3AF" />
-        </Pressable>
-      </View>
+      <Text className="text-xl font-black text-gray-900 uppercase">Tableau de Bord</Text>
 
       <Pressable onPress={() => router.push('/express-add')} className="bg-primary p-6 rounded-3xl mt-8">
         <View className="flex-row items-center gap-5">
