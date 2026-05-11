@@ -45,7 +45,6 @@ export interface Product {
   status: 'active' | 'used' | 'discarded';
   syncStatus: 'synced' | 'pending' | 'offline';
   // Professional details (Optional)
-  batchNumber?: string;
   preparerName?: string;
   temperature?: number;
   origin?: string;

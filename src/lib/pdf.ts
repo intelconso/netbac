@@ -28,7 +28,7 @@ export function buildHaccpHtml(state: AppState, opts: PdfOptions = {}): string {
   const traceability = opts.includeTraceability !== false
     ? `<h2>Traçabilité des produits actifs (${active.length})</h2>
        <table>
-         <thead><tr><th>Produit</th><th>Qté</th><th>Emplacement</th><th>Ajouté</th><th>DLC</th><th>Opérateur</th><th>Lot</th></tr></thead>
+         <thead><tr><th>Produit</th><th>Qté</th><th>Emplacement</th><th>Ajouté</th><th>DLC</th><th>Opérateur</th></tr></thead>
          <tbody>${active.map((p) => `
            <tr>
              <td><strong>${p.name}</strong></td>
@@ -37,7 +37,6 @@ export function buildHaccpHtml(state: AppState, opts: PdfOptions = {}): string {
              <td>${formatDate(p.addedAt)}</td>
              <td>${formatDate(p.dlc)}</td>
              <td>${p.preparerName || '—'}</td>
-             <td>${p.batchNumber || '—'}</td>
            </tr>`).join('')}</tbody>
        </table>`
     : '';

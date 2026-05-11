@@ -53,7 +53,6 @@ export default function HistoryScreen() {
               </View>
               <View className="items-end">
                 <Text className="text-[10px] font-black text-gray-900">{product.quantity} {product.unit}</Text>
-                <Text className="text-[8px] font-bold text-gray-400 uppercase">Lot: {product.batchNumber || 'N/A'}</Text>
               </View>
             </View>
           );

@@ -162,7 +162,7 @@ export default function ReportsScreen() {
                 </View>
                 <View>
                   <Text className="text-xs font-black text-gray-900 uppercase">Traçabilité</Text>
-                  <Text className="text-[9px] font-bold text-gray-400 uppercase">Tous lots enregistrés</Text>
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase">Tous produits enregistrés</Text>
                 </View>
               </View>
               <Text className="text-[10px] font-black text-success uppercase">OK</Text>
@@ -247,7 +247,6 @@ export default function ReportsScreen() {
                 </View>
                 <View className="items-end">
                   <Text className="text-[9px] font-black text-gray-900 uppercase">{product.quantity} {product.unit}</Text>
-                  <Text className="text-[8px] font-bold text-gray-400 uppercase">Lot: {product.batchNumber || 'N/A'}</Text>
                 </View>
               </View>
             ))}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import ZoneIcon from '../src/components/ZoneIcon';
@@ -17,8 +17,7 @@ export default function ExpressAddScreen() {
   const [selection, setSelection] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>({});
   const [successProduct, setSuccessProduct] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [batchNumber, setBatchNumber] = useState('');
-  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [isMultiMode, setIsMultiMode] = useState(false);
   const [duplicateBac, setDuplicateBac] = useState<{ id: string; productId: string } | null>(null);
 
   const handleZoneSelect = (zoneId: string) => {
@@ -68,9 +67,8 @@ export default function ExpressAddScreen() {
       dlc: addDays(startOfDay(new Date()), 3).getTime(),
       actionType: 'received',
       preparerName: user?.name,
-      batchNumber: batchNumber || undefined,
     });
-    if (isBatchMode) {
+    if (isMultiMode) {
       setSuccessProduct(newId);
       setTimeout(() => setSuccessProduct(null), 1500);
     } else {
@@ -100,20 +98,10 @@ export default function ExpressAddScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 24 }}>
-        <View className="bg-gray-900 rounded-2xl p-4 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3 flex-1">
-            <View className="w-8 h-8 rounded-lg bg-white/10 items-center justify-center">
-              <FileText size={16} color="#10B981" />
-            </View>
-            <TextInput
-              placeholder="N° de Lot" placeholderTextColor="rgba(255,255,255,0.2)"
-              value={batchNumber} onChangeText={setBatchNumber}
-              className="flex-1 text-white text-[10px] font-bold uppercase tracking-widest"
-            />
-          </View>
-          <Pressable onPress={() => setIsBatchMode(!isBatchMode)} className={cn('px-3 py-1.5 rounded-lg', isBatchMode ? 'bg-primary' : 'bg-white/5')}>
-            <Text className={cn('text-[8px] font-black uppercase tracking-widest', isBatchMode ? 'text-white' : 'text-white/40')}>
-              Multi: {isBatchMode ? 'ON' : 'OFF'}
+        <View className="flex-row items-center justify-end">
+          <Pressable onPress={() => setIsMultiMode(!isMultiMode)} className={cn('px-3 py-1.5 rounded-lg', isMultiMode ? 'bg-primary' : 'bg-gray-100')}>
+            <Text className={cn('text-[8px] font-black uppercase tracking-widest', isMultiMode ? 'text-white' : 'text-gray-400')}>
+              Multi: {isMultiMode ? 'ON' : 'OFF'}
             </Text>
           </Pressable>
         </View>

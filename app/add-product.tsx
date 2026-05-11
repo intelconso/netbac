@@ -29,7 +29,6 @@ export default function AddProductScreen() {
   const [unit, setUnit] = useState(existingProduct?.unit || 'kg');
   const [dlc, setDlc] = useState<number>(existingProduct?.dlc || addDays(startOfDay(new Date()), 3).getTime());
   const [actionType, setActionType] = useState<ActionType>(existingProduct?.actionType || 'received');
-  const [batchNumber, setBatchNumber] = useState(existingProduct?.batchNumber || '');
   const [temperature, setTemperature] = useState(existingProduct?.temperature?.toString() || '');
   const [origin, setOrigin] = useState(existingProduct?.origin || '');
   const [showPreview, setShowPreview] = useState(false);
@@ -56,7 +55,6 @@ export default function AddProductScreen() {
     const productData = {
       bacId, name,
       quantity: parseFloat(quantity), unit, dlc, actionType,
-      batchNumber: batchNumber || undefined,
       temperature: temperature ? parseFloat(temperature) : undefined,
       origin: origin || undefined,
       preparerName: user?.name,
@@ -107,7 +105,7 @@ export default function AddProductScreen() {
                 id: 'preview', bacId, name: name || 'Nom du produit',
                 quantity: parseFloat(quantity) || 0, unit,
                 addedAt: Date.now(), dlc, status: 'active', actionType,
-                batchNumber, temperature: temperature ? parseFloat(temperature) : undefined, origin,
+                temperature: temperature ? parseFloat(temperature) : undefined, origin,
                 preparerName: user?.name || 'Chef', modifiedAt: Date.now(), syncStatus: 'synced',
               }}
               size="sm"
@@ -220,15 +218,9 @@ export default function AddProductScreen() {
           {!user?.settings?.simplifiedMode && (
             <View className="gap-4 pt-4 border-t border-gray-50">
               <Text className="text-[10px] font-black text-primary uppercase tracking-widest">Détails HACCP</Text>
-              <View className="flex-row gap-4">
-                <View className="flex-1 gap-2">
-                  <Text className="text-[9px] font-bold text-gray-400 uppercase">N° de lot</Text>
-                  <TextInput value={batchNumber} onChangeText={setBatchNumber} placeholder="L240408" className="bg-gray-50 p-3 rounded-xl text-xs font-bold" />
-                </View>
-                <View className="flex-1 gap-2">
-                  <Text className="text-[9px] font-bold text-gray-400 uppercase">Temp.</Text>
-                  <TextInput value={temperature} onChangeText={setTemperature} placeholder="3.5" keyboardType="decimal-pad" className="bg-gray-50 p-3 rounded-xl text-xs font-bold" />
-                </View>
+              <View className="gap-2">
+                <Text className="text-[9px] font-bold text-gray-400 uppercase">Temp.</Text>
+                <TextInput value={temperature} onChangeText={setTemperature} placeholder="3.5" keyboardType="decimal-pad" className="bg-gray-50 p-3 rounded-xl text-xs font-bold" />
               </View>
               <View className="gap-2">
                 <Text className="text-[9px] font-bold text-gray-400 uppercase">Origine</Text>
