@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { ArrowLeft, ChevronRight, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import ZoneIcon from '../src/components/ZoneIcon';
@@ -11,13 +11,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ExpressAddScreen() {
   const router = useRouter();
-  const { zones, storageUnits, shelves, bacs, addProduct, products, user } = useStore();
+  const params = useLocalSearchParams<{ zoneId?: string; unitId?: string; shelfId?: string }>();
+  const { zones, storageUnits, shelves, bacs, products } = useStore();
 
-  const [step, setStep] = useState<'zone' | 'unit' | 'shelf' | 'bac'>('zone');
-  const [selection, setSelection] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>({});
-  const [successProduct, setSuccessProduct] = useState<string | null>(null);
+  const initialSelection = { zoneId: params.zoneId, unitId: params.unitId, shelfId: params.shelfId };
+  const initialStep: 'zone' | 'unit' | 'shelf' | 'bac' =
+    params.shelfId ? 'bac' : params.unitId ? 'shelf' : params.zoneId ? 'unit' : 'zone';
+
+  const [step, setStep] = useState<'zone' | 'unit' | 'shelf' | 'bac'>(initialStep);
+  const [selection, setSelection] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>(initialSelection);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isMultiMode, setIsMultiMode] = useState(false);
   const [duplicateBac, setDuplicateBac] = useState<{ id: string; productId: string } | null>(null);
 
   const handleZoneSelect = (zoneId: string) => {
@@ -62,18 +65,7 @@ export default function ExpressAddScreen() {
       setDuplicateBac({ id: bacId, productId: existing.id });
       return;
     }
-    const newId = addProduct({
-      bacId, name: bac.name, quantity: 1, unit: 'pce',
-      dlc: addDays(startOfDay(new Date()), 3).getTime(),
-      actionType: 'received',
-      preparerName: user?.name,
-    });
-    if (isMultiMode) {
-      setSuccessProduct(newId);
-      setTimeout(() => setSuccessProduct(null), 1500);
-    } else {
-      router.replace({ pathname: '/add-product', params: { productId: newId, editMode: 'true' } });
-    }
+    router.replace({ pathname: '/add-product', params: { bacId, zoneId: selection.zoneId || '', unitId: selection.unitId || '', shelfId: selection.shelfId || '' } });
   };
 
   const filteredBacs = bacs.filter((b) => b.shelfId === selection.shelfId);
@@ -98,14 +90,6 @@ export default function ExpressAddScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 24 }}>
-        <View className="flex-row items-center justify-end">
-          <Pressable onPress={() => setIsMultiMode(!isMultiMode)} className={cn('px-3 py-1.5 rounded-lg', isMultiMode ? 'bg-primary' : 'bg-gray-100')}>
-            <Text className={cn('text-[8px] font-black uppercase tracking-widest', isMultiMode ? 'text-white' : 'text-gray-400')}>
-              Multi: {isMultiMode ? 'ON' : 'OFF'}
-            </Text>
-          </Pressable>
-        </View>
-
         {step === 'zone' && (
           <>
             <View className="relative">
@@ -316,15 +300,6 @@ export default function ExpressAddScreen() {
         </View>
       </Modal>
 
-      <Modal visible={!!successProduct} transparent animationType="fade">
-        <View className="flex-1 bg-primary items-center justify-center p-8">
-          <View className="w-24 h-24 rounded-full bg-white/20 items-center justify-center mb-6">
-            <Check size={48} color="#fff" />
-          </View>
-          <Text className="text-3xl font-black uppercase text-white text-center mb-2">Étiquette Créée !</Text>
-          <Text className="text-white/70 text-sm font-bold uppercase tracking-widest">Enregistré</Text>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

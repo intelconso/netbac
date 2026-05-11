@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X } from 'lucide-react-native';
+import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
 import { ACTION_TYPES } from '../src/lib/actionTypes';
-import { addDays, startOfDay } from 'date-fns';
+import { addDays, startOfDay, addMonths, startOfMonth, endOfMonth, getDay, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import ProductLabel from '../src/components/ProductLabel';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,17 +16,19 @@ const UNITS = ['kg', 'g', 'pce', 'L', 'broche', 'bacs'];
 
 export default function AddProductScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string }>();
+  const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string; zoneId?: string; unitId?: string; shelfId?: string }>();
   const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user } = useStore();
 
   const editMode = params.editMode === 'true';
   const existingProduct = params.productId ? products.find((p) => p.id === params.productId) : null;
+  const initialBacId = params.bacId || existingProduct?.bacId || bacs[0]?.id || '';
+  const initialBac = bacs.find((b) => b.id === initialBacId);
 
-  const [bacId, setBacId] = useState(params.bacId || existingProduct?.bacId || bacs[0]?.id || '');
+  const [bacId, setBacId] = useState(initialBacId);
   const [isSelectingBac, setIsSelectingBac] = useState(false);
   const [selectionPath, setSelectionPath] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>({});
 
-  const [name, setName] = useState(existingProduct?.name || '');
+  const [name, setName] = useState(existingProduct?.name || (params.bacId ? (initialBac?.name || '') : ''));
   const [quantity, setQuantity] = useState(existingProduct?.quantity.toString() || '');
   const [unit, setUnit] = useState(existingProduct?.unit || 'kg');
   const [dlc, setDlc] = useState<number>(existingProduct?.dlc || addDays(startOfDay(new Date()), 3).getTime());
@@ -35,6 +38,8 @@ export default function AddProductScreen() {
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calMonth, setCalMonth] = useState(() => startOfMonth(new Date(dlc)));
 
   const handleActionTypeChange = (type: ActionType) => {
     setActionType(type);
@@ -61,7 +66,11 @@ export default function AddProductScreen() {
     setShowSuccess(true);
     setTimeout(() => {
       setShowSuccess(false);
-      router.back();
+      if (params.zoneId || params.unitId || params.shelfId) {
+        router.replace({ pathname: '/express-add', params: { zoneId: params.zoneId || '', unitId: params.unitId || '', shelfId: params.shelfId || '' } });
+      } else {
+        router.replace('/express-add');
+      }
     }, 1200);
   };
 
@@ -194,7 +203,7 @@ export default function AddProductScreen() {
           <View className="gap-3">
             <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">DLC</Text>
             <View className="flex-row gap-2">
-              {[0, 1, 2, 3, 5].map((days) => {
+              {[0, 1, 2].map((days) => {
                 const date = addDays(startOfDay(new Date()), days);
                 const isActive = startOfDay(new Date(dlc)).getTime() === date.getTime();
                 return (
@@ -204,6 +213,24 @@ export default function AddProductScreen() {
                   </Pressable>
                 );
               })}
+              {(() => {
+                const today = startOfDay(new Date()).getTime();
+                const dlcDay = startOfDay(new Date(dlc)).getTime();
+                const offset = Math.round((dlcDay - today) / 86400000);
+                const isCustom = offset < 0 || offset > 2;
+                const date = new Date(dlc);
+                return (
+                  <Pressable
+                    onPress={() => { setCalMonth(startOfMonth(date)); setShowCalendar(true); }}
+                    className={cn('flex-1 py-3 rounded-xl border-2 items-center', isCustom ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white')}
+                  >
+                    <Calendar size={14} color={isCustom ? '#10B981' : '#9CA3AF'} />
+                    <Text className={cn('text-[8px] font-bold mt-0.5', isCustom ? 'text-primary' : 'text-gray-400')}>
+                      {isCustom ? `${date.getDate()}/${date.getMonth() + 1}` : 'Autre'}
+                    </Text>
+                  </Pressable>
+                );
+              })()}
             </View>
           </View>
 
@@ -342,6 +369,70 @@ export default function AddProductScreen() {
                 </Pressable>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showCalendar} transparent animationType="fade" onRequestClose={() => setShowCalendar(false)}>
+        <View className="flex-1 bg-black/60 items-center justify-center p-6">
+          <View className="bg-white w-full rounded-3xl p-6 gap-4" style={{ maxWidth: 380 }}>
+            <View className="flex-row items-center justify-between">
+              <Pressable
+                disabled={calMonth.getTime() <= startOfMonth(new Date()).getTime()}
+                onPress={() => setCalMonth((m) => addMonths(m, -1))}
+                className={cn('w-10 h-10 rounded-xl items-center justify-center', calMonth.getTime() <= startOfMonth(new Date()).getTime() ? 'bg-gray-50 opacity-40' : 'bg-gray-50')}
+              >
+                <ChevronLeft size={18} color="#374151" />
+              </Pressable>
+              <Text className="text-sm font-black text-gray-900 uppercase">
+                {format(calMonth, 'MMMM yyyy', { locale: fr })}
+              </Text>
+              <Pressable onPress={() => setCalMonth((m) => addMonths(m, 1))} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+                <ChevronRight size={18} color="#374151" />
+              </Pressable>
+            </View>
+
+            <View className="flex-row">
+              {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+                <View key={i} className="flex-1 items-center py-2">
+                  <Text className="text-[10px] font-bold text-gray-400 uppercase">{d}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View className="flex-row flex-wrap">
+              {(() => {
+                const first = startOfMonth(calMonth);
+                const last = endOfMonth(calMonth);
+                const leadingBlanks = (getDay(first) + 6) % 7; // Monday-first
+                const cells: React.ReactNode[] = [];
+                for (let i = 0; i < leadingBlanks; i++) cells.push(<View key={`b${i}`} style={{ width: '14.2857%' }} className="aspect-square" />);
+                const todayTs = startOfDay(new Date()).getTime();
+                for (let d = 1; d <= last.getDate(); d++) {
+                  const date = new Date(calMonth.getFullYear(), calMonth.getMonth(), d);
+                  const ts = date.getTime();
+                  const isPast = ts < todayTs;
+                  const isActive = startOfDay(new Date(dlc)).getTime() === ts;
+                  const isToday = todayTs === ts;
+                  cells.push(
+                    <View key={d} style={{ width: '14.2857%' }} className="aspect-square p-0.5">
+                      <Pressable
+                        disabled={isPast}
+                        onPress={() => { setDlc(ts); setShowCalendar(false); }}
+                        className={cn('flex-1 items-center justify-center rounded-xl', isActive ? 'bg-primary' : isToday ? 'bg-primary/10' : 'bg-transparent')}
+                      >
+                        <Text className={cn('text-xs font-bold', isActive ? 'text-white' : isToday ? 'text-primary' : isPast ? 'text-gray-200' : 'text-gray-700')}>{d}</Text>
+                      </Pressable>
+                    </View>
+                  );
+                }
+                return cells;
+              })()}
+            </View>
+
+            <Pressable onPress={() => setShowCalendar(false)} className="py-3 bg-gray-50 rounded-2xl">
+              <Text className="text-gray-400 font-black uppercase text-xs text-center">Fermer</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>

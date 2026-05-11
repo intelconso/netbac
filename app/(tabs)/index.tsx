@@ -5,7 +5,7 @@ import { Scan, Plus, AlertTriangle } from 'lucide-react-native';
 import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import { useStore } from '../../src/lib/store';
-import { getDaysRemaining } from '../../src/lib/utils';
+import { cn, getDaysRemaining } from '../../src/lib/utils';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -30,7 +30,24 @@ export default function HomeScreen() {
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 96 }}>
       <Text className="text-xl font-black text-gray-900 uppercase">Tableau de Bord</Text>
 
-      <Pressable onPress={() => router.push('/express-add')} className="bg-primary p-6 rounded-3xl mt-8">
+      {expiringSoon.length > 0 && (
+        <Pressable onPress={() => router.push('/(tabs)/alerts' as any)} className="bg-danger p-6 rounded-3xl mt-8">
+          <View className="flex-row items-center gap-5">
+            <View className="w-14 h-14 rounded-2xl bg-white/20 items-center justify-center">
+              <AlertTriangle size={32} color="#fff" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-xl font-black text-white uppercase">À surveiller</Text>
+              <Text className="text-[9px] font-black text-white/60 uppercase tracking-widest mt-1">
+                {expiringSoon.length} {expiringSoon.length > 1 ? 'étiquettes critiques' : 'étiquette critique'}
+              </Text>
+            </View>
+            <Text className="text-4xl font-black text-white/30">{expiringSoon.length}</Text>
+          </View>
+        </Pressable>
+      )}
+
+      <Pressable onPress={() => router.push('/express-add')} className={cn('bg-primary p-6 rounded-3xl', expiringSoon.length > 0 ? 'mt-4' : 'mt-8')}>
         <View className="flex-row items-center gap-5">
           <View className="w-14 h-14 rounded-2xl bg-white/20 items-center justify-center">
             <Plus size={32} color="#fff" />
