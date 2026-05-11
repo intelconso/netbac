@@ -46,11 +46,18 @@ export default function AllLabelsScreen() {
     return true;
   });
 
+  const [pendingStatus, setPendingStatus] = useState<'used' | 'discarded' | null>(null);
+
   const handleRemove = (status: 'used' | 'discarded') => {
-    if (selectedProduct) {
-      updateProductStatus(selectedProduct.id, status);
+    setPendingStatus(status);
+  };
+
+  const handleConfirmRemove = () => {
+    if (selectedProduct && pendingStatus) {
+      updateProductStatus(selectedProduct.id, pendingStatus);
       setSelectedProduct(null);
       setShowRemoveConfirm(false);
+      setPendingStatus(null);
     }
   };
 
@@ -177,7 +184,33 @@ export default function AllLabelsScreen() {
       <Modal visible={!!selectedProduct} transparent animationType="fade" onRequestClose={() => setSelectedProduct(null)}>
         <View className="flex-1 bg-black/90 items-center justify-center p-6">
           <View className="w-full bg-white rounded-3xl overflow-hidden" style={{ maxWidth: 400 }}>
-            {showRemoveConfirm ? (
+            {pendingStatus ? (
+              <View className="p-8 gap-6">
+                <View className="items-center gap-2">
+                  <View className={cn('w-16 h-16 rounded-full items-center justify-center mb-2', pendingStatus === 'used' ? 'bg-success/10' : 'bg-danger/10')}>
+                    {pendingStatus === 'used'
+                      ? <CheckCircle2 size={28} color="#10B981" />
+                      : <Trash2 size={28} color="#EF4444" />}
+                  </View>
+                  <Text className="text-xl font-black uppercase text-gray-900 text-center">
+                    {pendingStatus === 'used' ? 'Marquer utilisé' : 'Marquer jeté'} ?
+                  </Text>
+                  <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
+                    {selectedProduct?.name}
+                  </Text>
+                </View>
+                <View className="gap-3">
+                  <Pressable onPress={handleConfirmRemove} className={cn('py-4 rounded-2xl', pendingStatus === 'used' ? 'bg-success' : 'bg-danger')}>
+                    <Text className="text-white font-black uppercase text-xs text-center">
+                      {pendingStatus === 'used' ? 'Utilisé' : 'Jeté'}
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setPendingStatus(null)} className="bg-gray-50 py-4 rounded-2xl">
+                    <Text className="text-gray-400 font-black uppercase text-xs text-center">Annuler</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : showRemoveConfirm ? (
               <View className="p-8 gap-8">
                 <View className="items-center gap-2">
                   <Text className="text-xl font-black uppercase text-gray-900">Retirer</Text>

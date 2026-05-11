@@ -12,6 +12,7 @@ export default function BacDetailScreen() {
   const router = useRouter();
   const { bacs, products, updateProductStatus } = useStore();
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [confirm, setConfirm] = useState<{ productId: string; productName: string; status: 'used' | 'discarded' } | null>(null);
 
   const bac = bacs.find((b) => b.id === id);
   const bacProducts = products.filter((p) => p.bacId === id && p.status === 'active');
@@ -58,17 +59,17 @@ export default function BacDetailScreen() {
                   </Pressable>
                   <View className="flex-row bg-gray-50 border-t border-gray-100">
                     {days < 0 ? (
-                      <Pressable onPress={() => updateProductStatus(product.id, 'discarded')} className="flex-1 bg-danger py-4 flex-row items-center justify-center gap-2">
+                      <Pressable onPress={() => setConfirm({ productId: product.id, productName: product.name, status: 'discarded' })} className="flex-1 bg-danger py-4 flex-row items-center justify-center gap-2">
                         <Trash2 size={14} color="#fff" />
                         <Text className="text-[10px] font-black uppercase text-white">JETER (EXPIRÉ)</Text>
                       </Pressable>
                     ) : (
                       <>
-                        <Pressable onPress={() => updateProductStatus(product.id, 'used')} className="flex-1 py-4 flex-row items-center justify-center gap-2 border-r border-gray-100">
+                        <Pressable onPress={() => setConfirm({ productId: product.id, productName: product.name, status: 'used' })} className="flex-1 py-4 flex-row items-center justify-center gap-2 border-r border-gray-100">
                           <CheckCircle2 size={14} color="#374151" />
                           <Text className="text-[10px] font-black uppercase text-gray-700">Utilisé</Text>
                         </Pressable>
-                        <Pressable onPress={() => updateProductStatus(product.id, 'discarded')} className="flex-1 py-4 flex-row items-center justify-center gap-2">
+                        <Pressable onPress={() => setConfirm({ productId: product.id, productName: product.name, status: 'discarded' })} className="flex-1 py-4 flex-row items-center justify-center gap-2">
                           <Trash2 size={14} color="#374151" />
                           <Text className="text-[10px] font-black uppercase text-gray-700">Jeté</Text>
                         </Pressable>
@@ -113,6 +114,42 @@ export default function BacDetailScreen() {
             </Pressable>
           </View>
         </Pressable>
+      </Modal>
+
+      <Modal visible={!!confirm} transparent animationType="fade" onRequestClose={() => setConfirm(null)}>
+        <View className="flex-1 bg-black/60 items-center justify-center p-6">
+          <View className="bg-white w-full rounded-3xl p-8 gap-6" style={{ maxWidth: 400 }}>
+            <View className="items-center gap-2">
+              <View className={cn('w-16 h-16 rounded-full items-center justify-center mb-2', confirm?.status === 'used' ? 'bg-success/10' : 'bg-danger/10')}>
+                {confirm?.status === 'used'
+                  ? <CheckCircle2 size={28} color="#10B981" />
+                  : <Trash2 size={28} color="#EF4444" />}
+              </View>
+              <Text className="text-xl font-black uppercase text-gray-900 text-center">
+                {confirm?.status === 'used' ? 'Marquer utilisé' : 'Marquer jeté'} ?
+              </Text>
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
+                {confirm?.productName}
+              </Text>
+            </View>
+            <View className="gap-3">
+              <Pressable
+                onPress={() => {
+                  if (confirm) updateProductStatus(confirm.productId, confirm.status);
+                  setConfirm(null);
+                }}
+                className={cn('py-4 rounded-2xl', confirm?.status === 'used' ? 'bg-success' : 'bg-danger')}
+              >
+                <Text className="text-white font-black uppercase text-xs text-center">
+                  {confirm?.status === 'used' ? 'Utilisé' : 'Jeté'}
+                </Text>
+              </Pressable>
+              <Pressable onPress={() => setConfirm(null)} className="bg-gray-50 py-4 rounded-2xl">
+                <Text className="text-gray-400 font-black uppercase text-xs text-center">Annuler</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );

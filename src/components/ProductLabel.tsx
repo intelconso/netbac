@@ -1,11 +1,12 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import {
-  Flame, PackageOpen, Snowflake, Truck, User as UserIcon, Thermometer, Calendar, Clock, MapPin,
+  User as UserIcon, Thermometer, Calendar, Clock, MapPin,
 } from 'lucide-react-native';
-import { Product, ActionType } from '../types';
+import { Product } from '../types';
 import { formatDate, getDayColor, cn } from '../lib/utils';
 import { useStore } from '../lib/store';
+import { ACTION_TYPES, getActionType } from '../lib/actionTypes';
 
 interface ProductLabelProps {
   product: Product;
@@ -26,12 +27,7 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
     ? `${unit.name} • ${shelf.name} • ${bac.name}`
     : 'Emplacement inconnu';
 
-  const actions: { id: ActionType; label: string; icon: any }[] = [
-    { id: 'cooked', label: 'Fabriqué', icon: Flame },
-    { id: 'opened', label: 'Ouvert', icon: PackageOpen },
-    { id: 'defrosted', label: 'Décongelé', icon: Snowflake },
-    { id: 'received', label: 'Reçu', icon: Truck },
-  ];
+  const actions = ACTION_TYPES;
 
   const isLg = size === 'lg';
 
@@ -104,7 +100,7 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
               <View className="flex-row items-center gap-1">
                 <Calendar size={isLg ? 14 : 10} color="#9CA3AF" />
                 <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-[10px]' : 'text-[7px]')}>
-                  Date {product.actionType === 'cooked' ? 'Fab.' : product.actionType === 'opened' ? 'Ouv.' : 'Rec.'}
+                  Date {getActionType(product.actionType).shortLabel}
                 </Text>
               </View>
               <Text className={cn('font-black text-gray-900', isLg ? 'text-2xl' : 'text-sm')}>

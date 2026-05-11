@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, Calendar, Package, Flame, PackageOpen, Snowflake, Truck, Eye, MapPin, ChevronRight, X } from 'lucide-react-native';
+import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
+import { ACTION_TYPES } from '../src/lib/actionTypes';
 import { addDays, startOfDay } from 'date-fns';
 import ProductLabel from '../src/components/ProductLabel';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,12 +38,8 @@ export default function AddProductScreen() {
 
   const handleActionTypeChange = (type: ActionType) => {
     setActionType(type);
-    let days = 3;
-    if (type === 'cooked') days = 3;
-    if (type === 'opened') days = 2;
-    if (type === 'received') days = 5;
-    if (type === 'defrosted') days = 1;
-    setDlc(addDays(startOfDay(new Date()), days).getTime());
+    const def = ACTION_TYPES.find((a) => a.id === type);
+    setDlc(addDays(startOfDay(new Date()), def?.dlcDays ?? 3).getTime());
   };
 
   const handleSubmit = () => {
@@ -146,12 +143,7 @@ export default function AddProductScreen() {
           <View className="gap-3">
             <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type d'action</Text>
             <View className="flex-row gap-2">
-              {[
-                { id: 'received' as ActionType, label: 'Reçu', icon: Truck },
-                { id: 'cooked' as ActionType, label: 'Cuit', icon: Flame },
-                { id: 'opened' as ActionType, label: 'Ouvert', icon: PackageOpen },
-                { id: 'defrosted' as ActionType, label: 'Décong.', icon: Snowflake },
-              ].map((type) => {
+              {ACTION_TYPES.map((type) => {
                 const Icon = type.icon;
                 const active = actionType === type.id;
                 return (

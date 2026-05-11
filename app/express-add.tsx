@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Check, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import ZoneIcon from '../src/components/ZoneIcon';
@@ -300,9 +300,9 @@ export default function ExpressAddScreen() {
             <View className="gap-3">
               <Pressable
                 onPress={() => {
-                  const pid = duplicateBac?.productId;
+                  const bid = duplicateBac?.id;
                   setDuplicateBac(null);
-                  if (pid) router.replace({ pathname: '/add-product', params: { productId: pid, editMode: 'true' } });
+                  if (bid) router.replace(`/container/${bid}` as any);
                 }}
                 className="bg-primary py-4 rounded-2xl"
               >
