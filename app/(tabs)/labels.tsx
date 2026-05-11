@@ -6,6 +6,7 @@ import { useStore } from '../../src/lib/store';
 import { cn, formatDate, getDaysRemaining, getStatusColor } from '../../src/lib/utils';
 import ProductLabel from '../../src/components/ProductLabel';
 import ZoneIcon from '../../src/components/ZoneIcon';
+import UnitIcon from '../../src/components/UnitIcon';
 
 export default function AllLabelsScreen() {
   const router = useRouter();
@@ -14,20 +15,35 @@ export default function AllLabelsScreen() {
   const { products, updateProductStatus, zones, storageUnits, shelves, bacs } = useStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('all');
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('all');
+  const [selectedShelfId, setSelectedShelfId] = useState<string>('all');
+  const [selectedBacId, setSelectedBacId] = useState<string>('all');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
 
   const activeProducts = products.filter((p) => p.status === 'active');
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
 
+  const pickZone = (id: string) => { setSelectedZoneId(id); setSelectedUnitId('all'); setSelectedShelfId('all'); setSelectedBacId('all'); };
+  const pickUnit = (id: string) => { setSelectedUnitId(id); setSelectedShelfId('all'); setSelectedBacId('all'); };
+  const pickShelf = (id: string) => { setSelectedShelfId(id); setSelectedBacId('all'); };
+
+  const unitsInZone = selectedZoneId === 'all' ? [] : storageUnits.filter((u) => u.zoneId === selectedZoneId);
+  const shelvesInUnit = selectedUnitId === 'all' ? [] : shelves.filter((s) => s.unitId === selectedUnitId);
+  const bacsInShelf = selectedShelfId === 'all' ? [] : bacs.filter((b) => b.shelfId === selectedShelfId);
+
   const filteredProducts = activeProducts.filter((p) => {
     if (todayFilter && p.addedAt < startOfToday) return false;
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
-    if (selectedZoneId === 'all') return matchesSearch;
+    if (!p.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    if (selectedZoneId === 'all') return true;
     const bac = bacs.find((b) => b.id === p.bacId);
     const shelf = shelves.find((s) => s.id === bac?.shelfId);
     const unit = storageUnits.find((u) => u.id === shelf?.unitId);
-    return matchesSearch && unit?.zoneId === selectedZoneId;
+    if (unit?.zoneId !== selectedZoneId) return false;
+    if (selectedUnitId !== 'all' && unit?.id !== selectedUnitId) return false;
+    if (selectedShelfId !== 'all' && shelf?.id !== selectedShelfId) return false;
+    if (selectedBacId !== 'all' && bac?.id !== selectedBacId) return false;
+    return true;
   });
 
   const handleRemove = (status: 'used' | 'discarded') => {
@@ -62,19 +78,68 @@ export default function AllLabelsScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-          <Pressable onPress={() => setSelectedZoneId('all')} className={cn('px-4 py-2 rounded-xl', selectedZoneId === 'all' ? 'bg-primary' : 'bg-gray-50')}>
+          <Pressable onPress={() => pickZone('all')} className={cn('px-4 py-2 rounded-xl', selectedZoneId === 'all' ? 'bg-primary' : 'bg-gray-50')}>
             <Text className={cn('text-[9px] font-black uppercase tracking-widest', selectedZoneId === 'all' ? 'text-white' : 'text-gray-400')}>Tout</Text>
           </Pressable>
           {zones.map((zone) => {
             const active = selectedZoneId === zone.id;
             return (
-              <Pressable key={zone.id} onPress={() => setSelectedZoneId(zone.id)} className={cn('px-4 py-2 rounded-xl flex-row items-center gap-2', active ? 'bg-primary' : 'bg-gray-50')}>
+              <Pressable key={zone.id} onPress={() => pickZone(active ? 'all' : zone.id)} className={cn('px-4 py-2 rounded-xl flex-row items-center gap-2', active ? 'bg-primary' : 'bg-gray-50')}>
                 <ZoneIcon type={zone.type} size={12} color={active ? '#fff' : '#9CA3AF'} />
                 <Text className={cn('text-[9px] font-black uppercase tracking-widest', active ? 'text-white' : 'text-gray-400')}>{zone.name}</Text>
               </Pressable>
             );
           })}
         </ScrollView>
+
+        {unitsInZone.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <Pressable onPress={() => pickUnit('all')} className={cn('px-4 py-2 rounded-xl', selectedUnitId === 'all' ? 'bg-gray-900' : 'bg-gray-50')}>
+              <Text className={cn('text-[9px] font-black uppercase tracking-widest', selectedUnitId === 'all' ? 'text-white' : 'text-gray-400')}>Tout</Text>
+            </Pressable>
+            {unitsInZone.map((unit) => {
+              const active = selectedUnitId === unit.id;
+              return (
+                <Pressable key={unit.id} onPress={() => pickUnit(active ? 'all' : unit.id)} className={cn('px-4 py-2 rounded-xl flex-row items-center gap-2', active ? 'bg-gray-900' : 'bg-gray-50')}>
+                  <UnitIcon type={unit.type} size={12} color={active ? '#fff' : '#9CA3AF'} />
+                  <Text className={cn('text-[9px] font-black uppercase tracking-widest', active ? 'text-white' : 'text-gray-400')}>{unit.name}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {shelvesInUnit.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <Pressable onPress={() => pickShelf('all')} className={cn('px-4 py-2 rounded-xl', selectedShelfId === 'all' ? 'bg-gray-700' : 'bg-gray-50')}>
+              <Text className={cn('text-[9px] font-black uppercase tracking-widest', selectedShelfId === 'all' ? 'text-white' : 'text-gray-400')}>Tout</Text>
+            </Pressable>
+            {shelvesInUnit.map((shelf) => {
+              const active = selectedShelfId === shelf.id;
+              return (
+                <Pressable key={shelf.id} onPress={() => pickShelf(active ? 'all' : shelf.id)} className={cn('px-4 py-2 rounded-xl', active ? 'bg-gray-700' : 'bg-gray-50')}>
+                  <Text className={cn('text-[9px] font-black uppercase tracking-widest', active ? 'text-white' : 'text-gray-400')}>{shelf.name}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {bacsInShelf.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+            <Pressable onPress={() => setSelectedBacId('all')} className={cn('px-4 py-2 rounded-xl', selectedBacId === 'all' ? 'bg-gray-500' : 'bg-gray-50')}>
+              <Text className={cn('text-[9px] font-black uppercase tracking-widest', selectedBacId === 'all' ? 'text-white' : 'text-gray-400')}>Tout</Text>
+            </Pressable>
+            {bacsInShelf.map((bac) => {
+              const active = selectedBacId === bac.id;
+              return (
+                <Pressable key={bac.id} onPress={() => setSelectedBacId(active ? 'all' : bac.id)} className={cn('px-4 py-2 rounded-xl', active ? 'bg-gray-500' : 'bg-gray-50')}>
+                  <Text className={cn('text-[9px] font-black uppercase tracking-widest', active ? 'text-white' : 'text-gray-400')}>{bac.name}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, gap: 8 }}>
