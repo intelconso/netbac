@@ -21,6 +21,9 @@ interface StoreActions {
   updateProductStatus: (id: string, status: Product['status']) => void;
   updateProduct: (id: string, product: Partial<Omit<Product, 'id' | 'addedAt' | 'modifiedAt' | 'syncStatus' | 'status'>>) => void;
   deleteProduct: (id: string) => void;
+  addProductUnit: (name: string) => void;
+  updateProductUnit: (oldName: string, newName: string) => void;
+  deleteProductUnit: (name: string) => void;
   addTempLog: (log: Omit<TemperatureLog, 'id' | 'timestamp'>) => void;
   completeCleaningTask: (taskId: string) => void;
   addLog: (log: Omit<ActivityLog, 'id' | 'timestamp' | 'userId' | 'userName'>) => void;
@@ -41,6 +44,7 @@ const INITIAL_STATE: AppState = {
   logs: [],
   tempLogs: [],
   cleaningTasks: [],
+  productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   user: null,
   isOffline: false,
   lastSyncAt: null,
@@ -165,6 +169,22 @@ export const useStore = create<AppState & StoreActions>()(
         products: state.products.filter((p) => p.id !== id),
       })),
 
+      addProductUnit: (name) => set((state) => {
+        const trimmed = name.trim();
+        if (!trimmed || state.productUnits.includes(trimmed)) return {};
+        return { productUnits: [...state.productUnits, trimmed] };
+      }),
+
+      updateProductUnit: (oldName, newName) => set((state) => {
+        const trimmed = newName.trim();
+        if (!trimmed) return {};
+        return { productUnits: state.productUnits.map((u) => (u === oldName ? trimmed : u)) };
+      }),
+
+      deleteProductUnit: (name) => set((state) => ({
+        productUnits: state.productUnits.filter((u) => u !== name),
+      })),
+
       addTempLog: (log) => {
         const id = randomId();
         const timestamp = Date.now();
@@ -252,6 +272,7 @@ export const useStore = create<AppState & StoreActions>()(
         logs: state.logs,
         tempLogs: state.tempLogs,
         cleaningTasks: state.cleaningTasks,
+        productUnits: state.productUnits,
         user: state.user,
         isOffline: state.isOffline,
         lastSyncAt: state.lastSyncAt,

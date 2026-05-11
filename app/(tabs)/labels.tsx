@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Search, Trash2, CheckCircle2 } from 'lucide-react-native';
 import { useStore } from '../../src/lib/store';
 import { cn, formatDate, getDaysRemaining, getStatusColor } from '../../src/lib/utils';
@@ -47,6 +47,23 @@ export default function AllLabelsScreen() {
   });
 
   const [pendingStatus, setPendingStatus] = useState<'used' | 'discarded' | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBack = () => {
+        if (pendingStatus) { setPendingStatus(null); return true; }
+        if (showRemoveConfirm) { setShowRemoveConfirm(false); return true; }
+        if (selectedProduct) { setSelectedProduct(null); return true; }
+        if (selectedBacId !== 'all') { setSelectedBacId('all'); return true; }
+        if (selectedShelfId !== 'all') { setSelectedShelfId('all'); setSelectedBacId('all'); return true; }
+        if (selectedUnitId !== 'all') { setSelectedUnitId('all'); setSelectedShelfId('all'); setSelectedBacId('all'); return true; }
+        if (selectedZoneId !== 'all') { setSelectedZoneId('all'); setSelectedUnitId('all'); setSelectedShelfId('all'); setSelectedBacId('all'); return true; }
+        return false;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+      return () => sub.remove();
+    }, [pendingStatus, showRemoveConfirm, selectedProduct, selectedZoneId, selectedUnitId, selectedShelfId, selectedBacId])
+  );
 
   const handleRemove = (status: 'used' | 'discarded') => {
     setPendingStatus(status);

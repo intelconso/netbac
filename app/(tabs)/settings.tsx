@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes, LogOut } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2 } from 'lucide-react-native';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useStore } from '../../src/lib/store';
@@ -21,10 +21,13 @@ export default function SettingsScreen() {
     addStorageUnit, deleteStorageUnit,
     addShelf, deleteShelf, setUnitShelves,
     addBac, deleteBac,
+    productUnits, addProductUnit, updateProductUnit, deleteProductUnit,
   } = useStore();
 
-  const [section, setSection] = useState<'menu' | 'structure'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'units'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
+  const [newUnit, setNewUnit] = useState('');
+  const [editingUnit, setEditingUnit] = useState<{ original: string; value: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -97,8 +100,9 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'units'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
+    { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
   ];
 
   if (section === 'menu') {
@@ -144,6 +148,89 @@ export default function SettingsScreen() {
             <Text className="text-[9px] font-bold text-red-400 uppercase tracking-widest mt-0.5">Quitter votre compte</Text>
           </View>
         </Pressable>
+      </ScrollView>
+    );
+  }
+
+  if (section === 'units') {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24 }}>
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('menu')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Unités</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Unités de mesure</Text>
+          </View>
+        </View>
+
+        <View className="bg-white rounded-2xl border border-gray-100 flex-row items-center gap-2 p-2 mb-4">
+          <TextInput
+            value={newUnit}
+            onChangeText={setNewUnit}
+            placeholder="ex: kg, g, pce, broche..."
+            className="flex-1 px-3 py-2 text-sm font-bold text-gray-900"
+            autoCapitalize="none"
+            onSubmitEditing={() => { if (newUnit.trim()) { addProductUnit(newUnit); setNewUnit(''); } }}
+            returnKeyType="done"
+          />
+          <Pressable
+            onPress={() => { if (newUnit.trim()) { addProductUnit(newUnit); setNewUnit(''); } }}
+            disabled={!newUnit.trim()}
+            className={cn('w-10 h-10 rounded-xl items-center justify-center', newUnit.trim() ? 'bg-primary' : 'bg-gray-100')}
+          >
+            <Plus size={18} color={newUnit.trim() ? '#fff' : '#9CA3AF'} />
+          </Pressable>
+        </View>
+
+        <View className="gap-2">
+          {productUnits.length === 0 ? (
+            <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Aucune unité</Text>
+            </View>
+          ) : productUnits.map((u) => {
+            const isEditing = editingUnit?.original === u;
+            return (
+              <View key={u} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-2">
+                {isEditing ? (
+                  <>
+                    <TextInput
+                      value={editingUnit!.value}
+                      onChangeText={(v) => setEditingUnit({ original: u, value: v })}
+                      autoFocus
+                      className="flex-1 px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold text-gray-900"
+                    />
+                    <Pressable
+                      onPress={() => {
+                        if (editingUnit!.value.trim() && editingUnit!.value.trim() !== u) {
+                          updateProductUnit(u, editingUnit!.value);
+                        }
+                        setEditingUnit(null);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-primary items-center justify-center"
+                    >
+                      <Check size={18} color="#fff" />
+                    </Pressable>
+                    <Pressable onPress={() => setEditingUnit(null)} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+                      <X size={18} color="#9CA3AF" />
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text className="flex-1 px-3 text-sm font-black text-gray-900 uppercase">{u}</Text>
+                    <Pressable onPress={() => setEditingUnit({ original: u, value: u })} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+                      <Edit2 size={16} color="#9CA3AF" />
+                    </Pressable>
+                    <Pressable onPress={() => deleteProductUnit(u)} className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
+                      <Trash2 size={16} color="#EF4444" />
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            );
+          })}
+        </View>
       </ScrollView>
     );
   }

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
@@ -12,12 +12,11 @@ import ProductLabel from '../src/components/ProductLabel';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SUGGESTIONS = ['Poulet blanc', 'Escalope', 'Poulet rôti', 'Aiguillettes', 'Cuisse de poulet'];
-const UNITS = ['kg', 'g', 'pce', 'L', 'broche', 'bacs'];
 
 export default function AddProductScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string; zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user } = useStore();
+  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user, productUnits: UNITS } = useStore();
 
   const editMode = params.editMode === 'true';
   const existingProduct = params.productId ? products.find((p) => p.id === params.productId) : null;
@@ -40,6 +39,25 @@ export default function AddProductScreen() {
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calMonth, setCalMonth] = useState(() => startOfMonth(new Date(dlc)));
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBack = () => {
+        if (showCalendar) { setShowCalendar(false); return true; }
+        if (duplicateId) { setDuplicateId(null); return true; }
+        if (isSelectingBac) {
+          if (selectionPath.shelfId) { setSelectionPath({ zoneId: selectionPath.zoneId, unitId: selectionPath.unitId }); return true; }
+          if (selectionPath.unitId) { setSelectionPath({ zoneId: selectionPath.zoneId }); return true; }
+          if (selectionPath.zoneId) { setSelectionPath({}); return true; }
+          setIsSelectingBac(false);
+          return true;
+        }
+        return false;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+      return () => sub.remove();
+    }, [showCalendar, duplicateId, isSelectingBac, selectionPath])
+  );
 
   const handleActionTypeChange = (type: ActionType) => {
     setActionType(type);
@@ -66,11 +84,8 @@ export default function AddProductScreen() {
     setShowSuccess(true);
     setTimeout(() => {
       setShowSuccess(false);
-      if (params.zoneId || params.unitId || params.shelfId) {
-        router.replace({ pathname: '/express-add', params: { zoneId: params.zoneId || '', unitId: params.unitId || '', shelfId: params.shelfId || '' } });
-      } else {
-        router.replace('/express-add');
-      }
+      if (router.canGoBack()) router.back();
+      else router.replace('/express-add');
     }, 1200);
   };
 

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, ChevronRight, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
 import { useStore } from '../src/lib/store';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
@@ -22,6 +22,32 @@ export default function ExpressAddScreen() {
   const [selection, setSelection] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>(initialSelection);
   const [searchQuery, setSearchQuery] = useState('');
   const [duplicateBac, setDuplicateBac] = useState<{ id: string; productId: string } | null>(null);
+
+  const goBackStep = () => {
+    if (step === 'bac') {
+      setStep('shelf');
+      setSelection((s) => ({ zoneId: s.zoneId, unitId: s.unitId }));
+      return true;
+    }
+    if (step === 'shelf') {
+      setStep('unit');
+      setSelection((s) => ({ zoneId: s.zoneId }));
+      return true;
+    }
+    if (step === 'unit') {
+      setStep('zone');
+      setSelection({});
+      return true;
+    }
+    return false;
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => goBackStep());
+      return () => sub.remove();
+    }, [step])
+  );
 
   const handleZoneSelect = (zoneId: string) => {
     const zoneUnits = storageUnits.filter((u) => u.zoneId === zoneId);
@@ -65,7 +91,7 @@ export default function ExpressAddScreen() {
       setDuplicateBac({ id: bacId, productId: existing.id });
       return;
     }
-    router.replace({ pathname: '/add-product', params: { bacId, zoneId: selection.zoneId || '', unitId: selection.unitId || '', shelfId: selection.shelfId || '' } });
+    router.push({ pathname: '/add-product', params: { bacId, zoneId: selection.zoneId || '', unitId: selection.unitId || '', shelfId: selection.shelfId || '' } });
   };
 
   const filteredBacs = bacs.filter((b) => b.shelfId === selection.shelfId);
@@ -74,7 +100,7 @@ export default function ExpressAddScreen() {
     <SafeAreaView className="flex-1 bg-background">
       <View className="px-6 py-4 flex-row items-center justify-between bg-white border-b border-gray-50">
         <View className="flex-row items-center gap-4">
-          <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+          <Pressable onPress={() => { if (!goBackStep()) router.back(); }} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
             <ArrowLeft size={20} color="#9CA3AF" />
           </Pressable>
           <View>

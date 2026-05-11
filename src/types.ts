@@ -104,6 +104,7 @@ export interface AppState {
   logs: ActivityLog[];
   tempLogs: TemperatureLog[];
   cleaningTasks: CleaningTask[];
+  productUnits: string[];
   user: User | null;
   isOffline: boolean;
   // Cloud sync state

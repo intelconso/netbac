@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, Pressable, Modal, BackHandler } from 'react-native';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Trash2, CheckCircle2, History } from 'lucide-react-native';
 import { useStore } from '../../src/lib/store';
 import { cn, formatDate, getDaysRemaining } from '../../src/lib/utils';
@@ -13,6 +13,18 @@ export default function BacDetailScreen() {
   const { bacs, products, updateProductStatus } = useStore();
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [confirm, setConfirm] = useState<{ productId: string; productName: string; status: 'used' | 'discarded' } | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBack = () => {
+        if (confirm) { setConfirm(null); return true; }
+        if (selectedProduct) { setSelectedProduct(null); return true; }
+        return false;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
+      return () => sub.remove();
+    }, [confirm, selectedProduct])
+  );
 
   const bac = bacs.find((b) => b.id === id);
   const bacProducts = products.filter((p) => p.bacId === id && p.status === 'active');

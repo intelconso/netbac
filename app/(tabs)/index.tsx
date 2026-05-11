@@ -77,16 +77,6 @@ export default function HomeScreen() {
           <Text className="text-[9px] font-bold text-gray-400 uppercase" numberOfLines={1} adjustsFontSizeToFit>Aujourd'hui</Text>
           <Text className="text-2xl font-black text-primary">{todayCount}</Text>
         </Pressable>
-        <Pressable
-          onPress={() => router.push('/(tabs)/alerts' as any)}
-          className="flex-1 bg-white p-4 rounded-2xl border border-gray-100 gap-1 active:bg-gray-50"
-        >
-          <View className="flex-row items-center gap-1">
-            <AlertTriangle size={10} color="#F59E0B" />
-            <Text className="text-[9px] font-bold text-gray-400 uppercase flex-1" numberOfLines={1} adjustsFontSizeToFit>À surveiller</Text>
-          </View>
-          <Text className="text-2xl font-black text-amber-500">{expiringSoon.length}</Text>
-        </Pressable>
       </View>
 
       <View className="mt-8 gap-6">
