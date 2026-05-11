@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Search, Trash2, CheckCircle2, Edit2 } from 'lucide-react-native';
+import { Search, Trash2, CheckCircle2 } from 'lucide-react-native';
 import { useStore } from '../../src/lib/store';
 import { cn, formatDate, getDaysRemaining, getStatusColor } from '../../src/lib/utils';
 import ProductLabel from '../../src/components/ProductLabel';
@@ -149,17 +149,6 @@ export default function AllLabelsScreen() {
                   <Pressable onPress={() => setShowRemoveConfirm(true)} className="flex-1 py-6 bg-danger flex-row items-center justify-center gap-2">
                     <Trash2 size={16} color="#fff" />
                     <Text className="text-white font-black uppercase tracking-widest text-[10px]">Retirer</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      const pid = selectedProduct?.id;
-                      setSelectedProduct(null);
-                      if (pid) router.push({ pathname: '/add-product', params: { productId: pid, editMode: 'true' } });
-                    }}
-                    className="flex-1 py-6 bg-primary flex-row items-center justify-center gap-2"
-                  >
-                    <Edit2 size={16} color="#fff" />
-                    <Text className="text-white font-black uppercase tracking-widest text-[10px]">Modifier</Text>
                   </Pressable>
                   <Pressable onPress={() => setSelectedProduct(null)} className="flex-1 py-6 bg-gray-900">
                     <Text className="text-white font-black uppercase tracking-widest text-[10px] text-center">Fermer</Text>

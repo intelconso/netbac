@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function BacDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { bacs, products, updateProductStatus, deleteProduct } = useStore();
+  const { bacs, products, updateProductStatus } = useStore();
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
 
   const bac = bacs.find((b) => b.id === id);
@@ -58,7 +58,7 @@ export default function BacDetailScreen() {
                   </Pressable>
                   <View className="flex-row bg-gray-50 border-t border-gray-100">
                     {days < 0 ? (
-                      <Pressable onPress={() => deleteProduct(product.id)} className="flex-1 bg-danger py-4 flex-row items-center justify-center gap-2">
+                      <Pressable onPress={() => updateProductStatus(product.id, 'discarded')} className="flex-1 bg-danger py-4 flex-row items-center justify-center gap-2">
                         <Trash2 size={14} color="#fff" />
                         <Text className="text-[10px] font-black uppercase text-white">JETER (EXPIRÉ)</Text>
                       </Pressable>
@@ -66,10 +66,11 @@ export default function BacDetailScreen() {
                       <>
                         <Pressable onPress={() => updateProductStatus(product.id, 'used')} className="flex-1 py-4 flex-row items-center justify-center gap-2 border-r border-gray-100">
                           <CheckCircle2 size={14} color="#374151" />
-                          <Text className="text-[10px] font-black uppercase text-gray-700">Valider Sortie</Text>
+                          <Text className="text-[10px] font-black uppercase text-gray-700">Utilisé</Text>
                         </Pressable>
-                        <Pressable onPress={() => deleteProduct(product.id)} className="w-14 py-4 items-center justify-center">
+                        <Pressable onPress={() => updateProductStatus(product.id, 'discarded')} className="flex-1 py-4 flex-row items-center justify-center gap-2">
                           <Trash2 size={14} color="#374151" />
+                          <Text className="text-[10px] font-black uppercase text-gray-700">Jeté</Text>
                         </Pressable>
                       </>
                     )}
