@@ -4,13 +4,13 @@ import { useRouter } from 'expo-router';
 import {
   ArrowLeft, History, Calendar, Thermometer, Sparkles, Clock, User, ChevronRight, CheckCircle2, AlertCircle, ShieldCheck,
 } from 'lucide-react-native';
-import { useStore } from '../src/lib/store';
+import { useActiveStore } from '../src/lib/useActive';
 import { formatDate, cn } from '../src/lib/utils';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function JournalScreen() {
   const router = useRouter();
-  const { logs, tempLogs, cleaningTasks, storageUnits, completeCleaningTask, addTempLog, user } = useStore();
+  const { logs, tempLogs, cleaningTasks, storageUnits, completeCleaningTask, addTempLog, user } = useActiveStore();
   const [activeTab, setActiveTab] = useState<'history' | 'calendar' | 'haccp'>('haccp');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'actions' | 'products'>('all');
   const [isAddingTemp, setIsAddingTemp] = useState(false);

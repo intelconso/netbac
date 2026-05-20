@@ -2,14 +2,14 @@ import React from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ChevronRight } from 'lucide-react-native';
-import { useStore } from '../../src/lib/store';
+import { useActiveStore } from '../../src/lib/useActive';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import UnitIcon from '../../src/components/UnitIcon';
 
 export default function StorageUnitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { zones, storageUnits, shelves, bacs } = useStore();
+  const { zones, storageUnits, shelves, bacs } = useActiveStore();
 
   const unit = storageUnits.find((u) => u.id === id);
   const zone = zones.find((z) => z.id === unit?.zoneId);

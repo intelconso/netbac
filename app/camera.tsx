@@ -4,12 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ArrowLeft, Camera as CameraIcon, RotateCcw, Check } from 'lucide-react-native';
-import { useStore } from '../src/lib/store';
+import { useActiveStore } from '../src/lib/useActive';
 
 export default function CameraScreen() {
   const router = useRouter();
   const { unitId } = useLocalSearchParams<{ unitId?: string }>();
-  const { addLog, storageUnits } = useStore();
+  const { addLog, storageUnits } = useActiveStore();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [capturedUri, setCapturedUri] = useState<string | null>(null);

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AlertCircle, ChevronRight } from 'lucide-react-native';
-import { useStore } from '../../src/lib/store';
+import { useActiveStore } from '../../src/lib/useActive';
 import { cn, formatDate, getDaysRemaining } from '../../src/lib/utils';
 import { Product, Bac } from '../../src/types';
 
@@ -36,7 +36,7 @@ function AlertCard({ alert }: { alert: AlertWithBac }) {
 }
 
 export default function AlertsScreen() {
-  const { products, bacs } = useStore();
+  const { products, bacs } = useActiveStore();
 
   const activeAlerts: AlertWithBac[] = products
     .filter((p) => p.status === 'active')

@@ -1,28 +1,65 @@
 import { doc, setDoc, getDoc, onSnapshot } from '@react-native-firebase/firestore';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 import { db } from './firebase';
 import { useStore } from './store';
 import { AppState } from '../types';
 
 const COLLECTION = 'users';
 const DEBOUNCE_MS = 1000;
+const RETRY_MS = 30_000;
 
-// Fields we don't want to ship to the cloud (UI-local / sync-meta only)
-const TRANSIENT_KEYS = ['isOffline', 'lastSyncAt', 'lastSyncStatus', 'lastSyncError'] as const;
+// Allowlist of data fields that belong in the cloud doc. Everything else on
+// the store object (Zustand actions, sync metadata, UI flags) is excluded —
+// otherwise functions get coerced to null in Firestore or, in some cases,
+// cause "unsupported field value" errors that surface as
+// "Erreur de synchronisation" in the UI.
+const CLOUD_KEYS = [
+  'zones',
+  'storageUnits',
+  'shelves',
+  'bacs',
+  'products',
+  'logs',
+  'tempLogs',
+  'cleaningTasks',
+  'productUnits',
+  'user',
+] as const;
 
-export type CloudPayload = Omit<AppState, (typeof TRANSIENT_KEYS)[number]> & { updatedAt: number };
+export type CloudPayload = Pick<AppState, (typeof CLOUD_KEYS)[number]> & { updatedAt: number };
 
-// `@react-native-firebase/firestore` exposes `exists` as a property (boolean),
-// while the Firebase Web SDK exposes it as a method. Handle both shapes.
 function snapExists(snap: any): boolean {
   if (!snap) return false;
   return typeof snap.exists === 'function' ? !!snap.exists() : !!snap.exists;
 }
 
+// Firestore rejects any field with `undefined` as a value ("Unsupported field
+// value: undefined"). React state easily produces these via optional props
+// that aren't filled in (e.g. preparerName, temperature). Strip them before
+// pushing — null is fine, missing is fine, undefined explodes.
+function stripUndefined(value: any): any {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(stripUndefined).filter((v) => v !== undefined);
+  if (typeof value === 'object') {
+    const out: any = {};
+    for (const k in value) {
+      const v = stripUndefined(value[k]);
+      if (v === undefined) continue;
+      out[k] = v;
+    }
+    return out;
+  }
+  return value;
+}
+
 export function serializeStateForCloud(state: AppState): CloudPayload {
-  const payload: any = { ...state };
-  for (const key of TRANSIENT_KEYS) delete payload[key];
-  payload.updatedAt = Date.now();
-  return payload;
+  const payload: any = { updatedAt: Date.now() };
+  for (const key of CLOUD_KEYS) {
+    const value = (state as any)[key];
+    if (value === undefined) continue;
+    payload[key] = stripUndefined(value);
+  }
+  return payload as CloudPayload;
 }
 
 function userDoc(uid: string) {
@@ -42,6 +79,8 @@ export async function pushToCloud(uid: string | null): Promise<void> {
   }
 }
 
+// Pulling merges cloud into local (union-merge in applyCloudState).
+// Local items are NEVER deleted because the cloud doesn't have them.
 export async function pullFromCloud(uid: string | null): Promise<void> {
   if (!uid) return;
   const { applyCloudState, setSyncState } = useStore.getState();
@@ -51,25 +90,21 @@ export async function pullFromCloud(uid: string | null): Promise<void> {
     if (snapExists(snap)) {
       const data = snap.data() as CloudPayload | undefined;
       if (data) {
-        // strip server-only fields before merging
         const { updatedAt: _u, ...rest } = data;
         applyCloudState(rest as Partial<AppState>);
       }
-      setSyncState({ status: 'synced', at: Date.now(), error: null });
-    } else {
-      // No cloud doc — push local as the seed
-      const payload = serializeStateForCloud(useStore.getState());
-      await setDoc(userDoc(uid), payload);
-      setSyncState({ status: 'synced', at: Date.now(), error: null });
     }
+    setSyncState({ status: 'synced', at: Date.now(), error: null });
   } catch (e: any) {
     setSyncState({ status: 'error', error: e?.message ?? 'Unknown error' });
   }
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let retryTimer: ReturnType<typeof setInterval> | null = null;
 let unsubscribeStore: (() => void) | null = null;
 let unsubscribeFirestore: (() => void) | null = null;
+let unsubscribeNetInfo: (() => void) | null = null;
 let activeUid: string | null = null;
 
 export function startSync(uid: string): void {
@@ -77,26 +112,26 @@ export function startSync(uid: string): void {
   stopSync();
   activeUid = uid;
 
-  // 1. Initial pull (or seed if cloud is empty)
-  pullFromCloud(uid).catch(() => {});
+  // 1. Initial pull (union-merge) followed by a push of the merged state.
+  //    Local-only items make it up; cloud-only items land locally. No loss.
+  pullFromCloud(uid)
+    .then(() => pushToCloud(uid))
+    .catch(() => {});
 
-  // 2. Live subscription — apply remote changes that arrive after our local snapshot
+  // 2. Live subscription for cross-device sync. Union-merge means incoming
+  //    remote items are added/updated locally without ever deleting local items
+  //    that the cloud is missing.
   unsubscribeFirestore = onSnapshot(userDoc(uid), (snap: any) => {
     if (!snapExists(snap)) return;
     const data = snap.data() as CloudPayload | undefined;
     if (!data) return;
-    const localUpdatedAt = useStore.getState().lastSyncAt ?? 0;
-    if ((data.updatedAt ?? 0) > localUpdatedAt) {
-      const { updatedAt: _u, ...rest } = data;
-      useStore.getState().applyCloudState(rest as Partial<AppState>);
-      useStore.getState().setSyncState({ status: 'synced', at: Date.now(), error: null });
-    }
+    const { updatedAt: _u, ...rest } = data;
+    useStore.getState().applyCloudState(rest as Partial<AppState>);
   });
 
-  // 3. Debounced write-through on every local mutation.
-  // Subscribe to a selector of *data only* slices, otherwise the sync-meta
-  // updates (lastSyncStatus / lastSyncAt) feed back into the listener and
-  // trigger an infinite push loop.
+  // 3. Debounced write-through on every local mutation. A failed push leaves
+  //    `lastSyncStatus: 'error'`; local data stays intact. The retry timer
+  //    and NetInfo reconnect handler below will re-fire the push.
   let lastDataSnapshot: string | null = null;
   unsubscribeStore = useStore.subscribe((state) => {
     const dataKey = JSON.stringify({
@@ -108,6 +143,7 @@ export function startSync(uid: string): void {
       logs: state.logs,
       tempLogs: state.tempLogs,
       cleaningTasks: state.cleaningTasks,
+      productUnits: state.productUnits,
       user: state.user,
     });
     if (lastDataSnapshot === dataKey) return;
@@ -117,12 +153,34 @@ export function startSync(uid: string): void {
       if (activeUid) pushToCloud(activeUid);
     }, DEBOUNCE_MS);
   });
+
+  // 4. Periodic retry while in error state. Catches "network was down at the
+  //    moment of push AND no new mutation has happened since." Heartbeat is
+  //    cheap; it only pushes when there's something to retry.
+  retryTimer = setInterval(() => {
+    if (!activeUid) return;
+    const status = useStore.getState().lastSyncStatus;
+    if (status === 'error') pushToCloud(activeUid);
+  }, RETRY_MS);
+
+  // 5. Reconnect-driven flush. The instant connectivity returns, push the
+  //    full local state up. Doesn't wait for the next mutation or retry tick.
+  unsubscribeNetInfo = NetInfo.addEventListener((state: NetInfoState) => {
+    if (state.isConnected && activeUid) {
+      const status = useStore.getState().lastSyncStatus;
+      if (status === 'error' || status === 'idle') pushToCloud(activeUid);
+    }
+  });
 }
 
 export function stopSync(): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
+  }
+  if (retryTimer) {
+    clearInterval(retryTimer);
+    retryTimer = null;
   }
   if (unsubscribeStore) {
     unsubscribeStore();
@@ -131,6 +189,10 @@ export function stopSync(): void {
   if (unsubscribeFirestore) {
     unsubscribeFirestore();
     unsubscribeFirestore = null;
+  }
+  if (unsubscribeNetInfo) {
+    unsubscribeNetInfo();
+    unsubscribeNetInfo = null;
   }
   activeUid = null;
 }

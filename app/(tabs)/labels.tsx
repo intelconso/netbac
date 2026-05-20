@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Search, Trash2, CheckCircle2 } from 'lucide-react-native';
-import { useStore } from '../../src/lib/store';
+import { useActiveStore } from '../../src/lib/useActive';
 import { cn, formatDate, getDaysRemaining, getStatusColor } from '../../src/lib/utils';
 import ProductLabel from '../../src/components/ProductLabel';
 import ZoneIcon from '../../src/components/ZoneIcon';
@@ -12,7 +12,7 @@ export default function AllLabelsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ filter?: string }>();
   const todayFilter = params.filter === 'today';
-  const { products, updateProductStatus, zones, storageUnits, shelves, bacs } = useStore();
+  const { products, updateProductStatus, zones, storageUnits, shelves, bacs } = useActiveStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedZoneId, setSelectedZoneId] = useState<string>('all');
   const [selectedUnitId, setSelectedUnitId] = useState<string>('all');

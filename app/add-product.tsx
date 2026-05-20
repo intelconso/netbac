@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft } from 'lucide-react-native';
-import { useStore } from '../src/lib/store';
+import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
 import { ACTION_TYPES } from '../src/lib/actionTypes';
@@ -16,7 +16,7 @@ const SUGGESTIONS = ['Poulet blanc', 'Escalope', 'Poulet rôti', 'Aiguillettes',
 export default function AddProductScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string; zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user, productUnits: UNITS } = useStore();
+  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user, productUnits: UNITS } = useActiveStore();
 
   const editMode = params.editMode === 'true';
   const existingProduct = params.productId ? products.find((p) => p.id === params.productId) : null;
@@ -72,13 +72,13 @@ export default function AddProductScreen() {
       setDuplicateId(dupe.id);
       return;
     }
-    const productData = {
+    const productData: any = {
       bacId, name,
       quantity: parseFloat(quantity), unit, dlc, actionType,
-      temperature: temperature ? parseFloat(temperature) : undefined,
-      origin: origin || undefined,
-      preparerName: user?.name,
     };
+    if (temperature) productData.temperature = parseFloat(temperature);
+    if (origin) productData.origin = origin;
+    if (user?.name) productData.preparerName = user.name;
     if (editMode && params.productId) updateProduct(params.productId, productData);
     else addProduct(productData);
     setShowSuccess(true);

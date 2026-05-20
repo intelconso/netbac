@@ -4,7 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2, FileText } from 'lucide-react-native';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
-import { useStore } from '../../src/lib/store';
+import { useActiveStore } from '../../src/lib/useActive';
 import { cn } from '../../src/lib/utils';
 import { ContainerType, StorageUnit, ZoneType } from '../../src/types';
 import CreateZoneModal from '../../src/components/CreateZoneModal';
@@ -23,7 +23,7 @@ export default function SettingsScreen() {
     addShelf, deleteShelf, setUnitShelves,
     addBac, deleteBac,
     productUnits, addProductUnit, updateProductUnit, deleteProductUnit,
-  } = useStore();
+  } = useActiveStore();
 
   const [section, setSection] = useState<'menu' | 'structure' | 'units'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});

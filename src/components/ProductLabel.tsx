@@ -5,7 +5,7 @@ import {
 } from 'lucide-react-native';
 import { Product } from '../types';
 import { formatDate, getDayColor, cn } from '../lib/utils';
-import { useStore } from '../lib/store';
+import { useActiveStore } from '../lib/useActive';
 import { ACTION_TYPES, getActionType } from '../lib/actionTypes';
 
 interface ProductLabelProps {
@@ -15,7 +15,7 @@ interface ProductLabelProps {
 }
 
 export default function ProductLabel({ product, size = 'sm', className }: ProductLabelProps) {
-  const { zones, storageUnits, shelves, bacs } = useStore();
+  const { zones, storageUnits, shelves, bacs } = useActiveStore();
   const dayColor = getDayColor(product.addedAt);
 
   const bac = bacs.find((b) => b.id === product.bacId);

@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal, BackHandler } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Trash2, CheckCircle2, History } from 'lucide-react-native';
-import { useStore } from '../../src/lib/store';
+import { useActiveStore } from '../../src/lib/useActive';
 import { cn, formatDate, getDaysRemaining } from '../../src/lib/utils';
 import ProductLabel from '../../src/components/ProductLabel';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function BacDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { bacs, products, updateProductStatus } = useStore();
+  const { bacs, products, updateProductStatus } = useActiveStore();
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [confirm, setConfirm] = useState<{ productId: string; productName: string; status: 'used' | 'discarded' } | null>(null);
 

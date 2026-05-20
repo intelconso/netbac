@@ -30,3 +30,10 @@ GoogleService-Info.plist
 .claude/scheduled_tasks.lock
 .mcp.json
 tmp/
+
+# Firebase Admin service account keys — NEVER commit
+*firebase-adminsdk*.json
+*-adminsdk-*.json
+
+# Local Firestore backup dumps (contain user emails) — NEVER commit
+netbac-backup-*.json

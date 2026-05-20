@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, ChevronRight, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
-import { useStore } from '../src/lib/store';
+import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import ZoneIcon from '../src/components/ZoneIcon';
 import UnitIcon from '../src/components/UnitIcon';
@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function ExpressAddScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, products } = useStore();
+  const { zones, storageUnits, shelves, bacs, products } = useActiveStore();
 
   const initialSelection = { zoneId: params.zoneId, unitId: params.unitId, shelfId: params.shelfId };
   const initialStep: 'zone' | 'unit' | 'shelf' | 'bac' =

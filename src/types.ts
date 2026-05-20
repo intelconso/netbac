@@ -4,6 +4,8 @@ export interface Zone {
   id: string;
   name: string;
   type: ZoneType;
+  modifiedAt: number;
+  deletedAt?: number;
 }
 
 export interface StorageUnit {
@@ -11,6 +13,8 @@ export interface StorageUnit {
   zoneId: string;
   name: string; // e.g., "Frigo 1", "Chambre Froide"
   type: 'frigo' | 'congelateur' | 'reserve' | 'saladette' | 'autre';
+  modifiedAt: number;
+  deletedAt?: number;
 }
 
 export interface Shelf {
@@ -18,6 +22,8 @@ export interface Shelf {
   unitId: string;
   level: number; // 1 for top, etc.
   name: string; // e.g., "Étagère 1"
+  modifiedAt: number;
+  deletedAt?: number;
 }
 
 export type ContainerType = 'bac' | 'boite' | 'tiroir' | 'etagere' | 'autre';
@@ -29,6 +35,8 @@ export interface Bac {
   name: string;
   type: ContainerType;
   createdAt: number;
+  modifiedAt: number;
+  deletedAt?: number;
   syncStatus: 'synced' | 'pending' | 'offline';
 }
 
@@ -41,6 +49,7 @@ export interface Product {
   dlc: number; // Timestamp
   addedAt: number;
   modifiedAt: number;
+  deletedAt?: number;
   actionType: ActionType;
   status: 'active' | 'used' | 'discarded';
   syncStatus: 'synced' | 'pending' | 'offline';
@@ -78,6 +87,8 @@ export interface CleaningTask {
   frequency: 'daily' | 'weekly' | 'monthly';
   lastDone?: number;
   nextDue: number;
+  modifiedAt: number;
+  deletedAt?: number;
 }
 
 export interface User {

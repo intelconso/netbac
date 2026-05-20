@@ -30,6 +30,7 @@ export function filterProducts(state: AppState, f: ReportFilter): Product[] {
   const search = (f.search || '').trim().toLowerCase();
   const productNames = f.productNames ?? [];
   return products.filter((p) => {
+    if (p.deletedAt) return false;
     if (!statuses.includes(p.status)) return false;
     if (productNames.length > 0 && !productNames.includes(p.name)) return false;
     if (productNames.length === 0 && search && !p.name.toLowerCase().includes(search)) return false;

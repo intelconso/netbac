@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Search, History, Trash2, CheckCircle2 } from 'lucide-react-native';
-import { useStore } from '../src/lib/store';
+import { useActiveStore } from '../src/lib/useActive';
 import { cn, formatDate } from '../src/lib/utils';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const { products, bacs } = useStore();
+  const { products, bacs } = useActiveStore();
   const [searchTerm, setSearchTerm] = useState('');
 
   const archivedProducts = products.filter((p) => p.status !== 'active').sort((a, b) => b.modifiedAt - a.modifiedAt);

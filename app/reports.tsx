@@ -4,7 +4,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft, Download, Calendar, Search, Check, ChevronLeft, ChevronRight, X,
 } from 'lucide-react-native';
-import { useStore } from '../src/lib/store';
+import { useActiveStore } from '../src/lib/useActive';
 import { cn, formatDate, getStatusColor } from '../src/lib/utils';
 import { generateAndShareReport, filterProducts, ReportFilter } from '../src/lib/pdf';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +18,7 @@ type Range = 'today' | '7d' | '30d' | 'all' | 'custom';
 
 export default function ReportsScreen() {
   const router = useRouter();
-  const state = useStore();
+  const state = useActiveStore();
   const { zones, storageUnits, shelves, bacs } = state;
 
   const [range, setRange] = useState<Range>('today');
