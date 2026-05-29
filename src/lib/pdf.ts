@@ -14,14 +14,12 @@ export type ReportFilter = {
   productNames?: string[];     // exact match against any of these names
   includeSummary?: boolean;
   includeTraceability?: boolean;
-  includeActivity?: boolean;
 };
 
-const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability' | 'includeActivity'>> = {
+const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
   statuses: ['active', 'used', 'discarded'],
   includeSummary: true,
   includeTraceability: true,
-  includeActivity: true,
 };
 
 export function filterProducts(state: AppState, f: ReportFilter): Product[] {
@@ -73,7 +71,7 @@ function rangeLabel(f: ReportFilter): string {
 }
 
 export function buildReportHtml(state: AppState, f: ReportFilter): string {
-  const { user, logs } = state;
+  const { user } = state;
   const filtered = filterProducts(state, f);
   const active = filtered.filter((p) => p.status === 'active');
   const used = filtered.filter((p) => p.status === 'used');
@@ -85,11 +83,6 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
 
   const includeSummary = f.includeSummary !== false;
   const includeTraceability = f.includeTraceability !== false;
-  const includeActivity = f.includeActivity !== false;
-
-  const filteredLogs = (f.from || f.to)
-    ? logs.filter((l) => (!f.from || l.timestamp >= f.from) && (!f.to || l.timestamp <= f.to))
-    : logs;
 
   const summary = includeSummary
     ? `<section class="summary">
@@ -105,7 +98,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ? `<h2>Traçabilité (${filtered.length})</h2>
        ${filtered.length === 0 ? '<p class="empty">Aucun produit pour ce filtre.</p>' : `
        <table>
-         <thead><tr><th>Produit</th><th>Qté</th><th>Emplacement</th><th>Ajouté</th><th>DLC</th><th>Modifié</th><th>Statut</th><th>Opérateur</th></tr></thead>
+         <thead><tr><th>Produit</th><th>Qté</th><th>Emplacement</th><th>Ajouté</th><th>DLC</th><th>Modifié</th><th>Statut</th></tr></thead>
          <tbody>${filtered.map((p) => `
            <tr>
              <td><strong>${p.name}</strong></td>
@@ -115,22 +108,6 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
              <td>${formatDate(p.dlc)}</td>
              <td>${formatDate(p.modifiedAt)}</td>
              <td><span class="badge ${statusClass(p.status)}">${statusLabel(p.status)}</span></td>
-             <td>${p.preparerName || '—'}</td>
-           </tr>`).join('')}</tbody>
-       </table>`}`
-    : '';
-
-  const activity = includeActivity
-    ? `<h2>Historique d'activité (${filteredLogs.length})</h2>
-       ${filteredLogs.length === 0 ? '<p class="empty">Aucune activité.</p>' : `
-       <table>
-         <thead><tr><th>Date</th><th>Opérateur</th><th>Action</th><th>Détails</th></tr></thead>
-         <tbody>${filteredLogs.map((l) => `
-           <tr>
-             <td>${formatDate(l.timestamp)}</td>
-             <td>${l.userName}</td>
-             <td>${l.action}</td>
-             <td>${l.details}</td>
            </tr>`).join('')}</tbody>
        </table>`}`
     : '';
@@ -160,7 +137,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
       .summary .value.warn { color: #EF4444; }
     </style></head><body>
     <h1>Rapport HACCP — ${user?.restaurantName || user?.name || 'Restaurant'}</h1>
-    <div class="meta">Généré le ${formatDate(Date.now())} • Opérateur: ${user?.name || 'Inconnu'}</div>
+    <div class="meta">Généré le ${formatDate(Date.now())}</div>
     <div class="filters">
       <strong>Période:</strong> ${rangeLabel(f)}
       &nbsp;•&nbsp; <strong>Statuts:</strong> ${(f.statuses ?? DEFAULT_FILTER.statuses).map(statusLabel).join(', ')}
@@ -170,7 +147,6 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     </div>
     ${summary}
     ${traceability}
-    ${activity}
     </body></html>`;
 }
 

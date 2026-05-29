@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Bac, Product, User, Zone, StorageUnit, Shelf, ActivityLog, TemperatureLog, CleaningTask } from '../types';
+import { AppState, Bac, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -19,7 +19,7 @@ interface StoreActions {
   updateBac: (id: string, bac: Partial<Omit<Bac, 'id' | 'createdAt' | 'modifiedAt' | 'syncStatus'>>) => void;
   deleteBac: (id: string) => void;
   addProduct: (product: Omit<Product, 'id' | 'addedAt' | 'modifiedAt' | 'syncStatus' | 'status'>) => string;
-  updateProductStatus: (id: string, status: Product['status']) => void;
+  updateProductStatus: (id: string, status: Product['status'], options?: { usedAt?: number }) => void;
   updateProduct: (id: string, product: Partial<Omit<Product, 'id' | 'addedAt' | 'modifiedAt' | 'syncStatus' | 'status'>>) => void;
   deleteProduct: (id: string) => void;
   addProductUnit: (name: string) => void;
@@ -27,7 +27,6 @@ interface StoreActions {
   deleteProductUnit: (name: string) => void;
   addTempLog: (log: Omit<TemperatureLog, 'id' | 'timestamp'>) => void;
   completeCleaningTask: (taskId: string) => void;
-  addLog: (log: Omit<ActivityLog, 'id' | 'timestamp' | 'userId' | 'userName'>) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
@@ -42,7 +41,6 @@ const INITIAL_STATE: AppState = {
   shelves: [],
   bacs: [],
   products: [],
-  logs: [],
   tempLogs: [],
   cleaningTasks: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
@@ -178,36 +176,32 @@ export const useStore = create<AppState & StoreActions>()(
             syncStatus: state.isOffline ? 'offline' : 'pending',
           }],
         }));
-        get().addLog({ action: 'add_product', details: `Ajout du produit: ${product.name}`, entityId: id });
         return id;
       },
 
-      updateProductStatus: (id, status) => {
-        const product = get().products.find((p) => p.id === id);
+      updateProductStatus: (id, status, options) => {
+        const usedAt = options?.usedAt;
         set((state) => ({
           products: state.products.map((p) =>
-            p.id === id ? { ...p, status, modifiedAt: Date.now(), syncStatus: state.isOffline ? 'offline' : 'pending' } : p
+            p.id === id
+              ? {
+                  ...p,
+                  status,
+                  ...(usedAt !== undefined ? { usedAt } : {}),
+                  modifiedAt: Date.now(),
+                  syncStatus: state.isOffline ? 'offline' : 'pending',
+                }
+              : p
           ),
         }));
-        if (product) {
-          get().addLog({
-            action: status === 'used' ? 'use_product' : 'discard_product',
-            details: `${status === 'used' ? 'Utilisation' : 'Mise au rebut'} de: ${product.name}`,
-            entityId: id,
-          });
-        }
       },
 
       updateProduct: (id, productData) => {
-        const product = get().products.find((p) => p.id === id);
         set((state) => ({
           products: state.products.map((p) =>
             p.id === id ? { ...p, ...productData, modifiedAt: Date.now(), syncStatus: state.isOffline ? 'offline' : 'pending' } : p
           ),
         }));
-        if (product) {
-          get().addLog({ action: 'update_product', details: `Mise à jour du produit: ${product.name}`, entityId: id });
-        }
       },
 
       deleteProduct: (id) => set((state) => ({
@@ -233,13 +227,7 @@ export const useStore = create<AppState & StoreActions>()(
       addTempLog: (log) => {
         const id = randomId();
         const timestamp = Date.now();
-        const unitName = get().storageUnits.find((u) => u.id === log.unitId)?.name || 'Unité inconnue';
         set((state) => ({ tempLogs: [...state.tempLogs, { ...log, id, timestamp } as TemperatureLog] }));
-        get().addLog({
-          action: 'temp_check',
-          details: `Relevé de température: ${log.temperature}°C pour ${unitName}`,
-          entityId: id,
-        });
       },
 
       completeCleaningTask: (taskId) => {
@@ -252,20 +240,6 @@ export const useStore = create<AppState & StoreActions>()(
         else if (task.frequency === 'monthly') nextDue += 30 * 24 * 60 * 60 * 1000;
         set((state) => ({
           cleaningTasks: state.cleaningTasks.map((t) => (t.id === taskId ? { ...t, lastDone: now, nextDue, modifiedAt: now } : t)),
-        }));
-        get().addLog({ action: 'cleaning', details: `Nettoyage effectué: ${task.name}`, entityId: taskId });
-      },
-
-      addLog: (log) => {
-        const user = get().user;
-        set((state) => ({
-          logs: [{
-            ...log,
-            id: randomId(),
-            timestamp: Date.now(),
-            userId: user?.id || 'unknown',
-            userName: user?.name || 'Inconnu',
-          } as ActivityLog, ...state.logs],
         }));
       },
 
@@ -309,7 +283,7 @@ export const useStore = create<AppState & StoreActions>()(
             }
             return Array.from(map.values());
           };
-          // Logs and tempLogs are append-only history; no modifiedAt, just dedupe by id.
+          // tempLogs is append-only history; no modifiedAt, just dedupe by id.
           const mergeAppendOnly = <T extends { id: string }>(local: T[], remote: T[] | undefined): T[] => {
             if (!Array.isArray(remote)) return local;
             const map = new Map<string, T>();
@@ -326,7 +300,6 @@ export const useStore = create<AppState & StoreActions>()(
             shelves: mergeNewer(state.shelves, cloud.shelves),
             bacs: mergeNewer(state.bacs, cloud.bacs),
             products: mergeNewer(state.products, cloud.products),
-            logs: mergeAppendOnly(state.logs, cloud.logs),
             tempLogs: mergeAppendOnly(state.tempLogs, cloud.tempLogs),
             cleaningTasks: mergeNewer(state.cleaningTasks, cloud.cleaningTasks),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
@@ -345,7 +318,6 @@ export const useStore = create<AppState & StoreActions>()(
         shelves: state.shelves,
         bacs: state.bacs,
         products: state.products,
-        logs: state.logs,
         tempLogs: state.tempLogs,
         cleaningTasks: state.cleaningTasks,
         productUnits: state.productUnits,

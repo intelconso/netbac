@@ -19,7 +19,6 @@ const CLOUD_KEYS = [
   'shelves',
   'bacs',
   'products',
-  'logs',
   'tempLogs',
   'cleaningTasks',
   'productUnits',
@@ -35,7 +34,7 @@ function snapExists(snap: any): boolean {
 
 // Firestore rejects any field with `undefined` as a value ("Unsupported field
 // value: undefined"). React state easily produces these via optional props
-// that aren't filled in (e.g. preparerName, temperature). Strip them before
+// that aren't filled in (e.g. temperature, origin). Strip them before
 // pushing — null is fine, missing is fine, undefined explodes.
 function stripUndefined(value: any): any {
   if (value === null || value === undefined) return value;
@@ -140,7 +139,6 @@ export function startSync(uid: string): void {
       shelves: state.shelves,
       bacs: state.bacs,
       products: state.products,
-      logs: state.logs,
       tempLogs: state.tempLogs,
       cleaningTasks: state.cleaningTasks,
       productUnits: state.productUnits,

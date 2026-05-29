@@ -27,7 +27,7 @@ export interface Shelf {
 }
 
 export type ContainerType = 'bac' | 'boite' | 'tiroir' | 'etagere' | 'autre';
-export type ActionType = 'cooked' | 'opened' | 'defrosted' | 'received';
+export type ActionType = 'cooked' | 'opened' | 'defrosted' | 'received' | 'cooling';
 
 export interface Bac {
   id: string;
@@ -54,20 +54,18 @@ export interface Product {
   status: 'active' | 'used' | 'discarded';
   syncStatus: 'synced' | 'pending' | 'offline';
   // Professional details (Optional)
-  preparerName?: string;
   temperature?: number;
   origin?: string;
   notes?: string;
-}
-
-export interface ActivityLog {
-  id: string;
-  timestamp: number;
-  userId: string;
-  userName: string;
-  action: 'add_product' | 'use_product' | 'discard_product' | 'update_product' | 'temp_check' | 'cleaning';
-  details: string;
-  entityId?: string; // ID of product, unit, etc.
+  // Real-world date of use, when different from modifiedAt — set when the
+  // user back-dates a "Utilisé" action (typically because the label expired
+  // before they remembered to mark it).
+  usedAt?: number;
+  // Refroidissement rapide HACCP — fields captured when actionType === 'cooling'.
+  coolingStartedAt?: number;
+  coolingFinishedAt?: number;
+  coolingTempStart?: number;
+  coolingTempEnd?: number;
 }
 
 export interface TemperatureLog {
@@ -112,7 +110,6 @@ export interface AppState {
   shelves: Shelf[];
   bacs: Bac[];
   products: Product[];
-  logs: ActivityLog[];
   tempLogs: TemperatureLog[];
   cleaningTasks: CleaningTask[];
   productUnits: string[];

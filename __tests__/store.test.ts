@@ -32,17 +32,6 @@ describe('product CRUD', () => {
     expect(useStore.getState().products).toHaveLength(1);
   });
 
-  it('logs an activity entry when a product is marked used', () => {
-    const id = useStore.getState().addProduct({
-      bacId: '1', name: 'Poulet', quantity: 1, unit: 'pce',
-      dlc: Date.now() + 86400000, actionType: 'received',
-    });
-    const logsBefore = useStore.getState().logs.length;
-    useStore.getState().updateProductStatus(id, 'used');
-    const logsAfter = useStore.getState().logs;
-    expect(logsAfter.length).toBeGreaterThan(logsBefore);
-    expect(logsAfter[0].action).toBe('use_product');
-  });
 });
 
 describe('zone CRUD', () => {

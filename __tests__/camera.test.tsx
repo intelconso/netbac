@@ -1,7 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import CameraScreen from '../app/camera';
-import { useStore } from '../src/lib/store';
 
 const mockBack = jest.fn();
 
@@ -17,7 +16,6 @@ jest.mock('expo-router', () => {
 describe('Camera screen', () => {
   beforeEach(() => {
     mockBack.mockClear();
-    useStore.setState({ logs: [] });
   });
 
   it('renders permission-granted state with shutter button', async () => {
@@ -26,7 +24,7 @@ describe('Camera screen', () => {
     expect(getByTestId('camera-view')).toBeTruthy();
   });
 
-  it('capture → save flow adds an activity log and navigates back', async () => {
+  it('capture → save flow navigates back', async () => {
     const { getByTestId } = render(<CameraScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('cam-shutter'));
@@ -34,9 +32,6 @@ describe('Camera screen', () => {
     await waitFor(() => getByTestId('cam-save'));
     fireEvent.press(getByTestId('cam-save'));
     expect(mockBack).toHaveBeenCalled();
-    const logs = useStore.getState().logs;
-    expect(logs[0].details).toMatch(/Photo capturée pour Frigo 1/);
-    expect(logs[0].entityId).toBe('u1');
   });
 
   it('retake resets captured state', async () => {

@@ -15,7 +15,7 @@ export default function HomeScreen() {
 
   const expiringSoon = useMemo(() => {
     return [...activeProducts]
-      .filter((p) => getDaysRemaining(p.dlc) <= 2)
+      .filter((p) => getDaysRemaining(p.dlc) <= 1)
       .sort((a, b) => a.dlc - b.dlc)
       .slice(0, 5);
   }, [activeProducts]);

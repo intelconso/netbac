@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  ArrowLeft, History, Calendar, Thermometer, Sparkles, Clock, User, ChevronRight, CheckCircle2, AlertCircle, ShieldCheck,
+  ArrowLeft, Calendar, Thermometer, Sparkles, ChevronRight, AlertCircle, ShieldCheck,
 } from 'lucide-react-native';
 import { useActiveStore } from '../src/lib/useActive';
 import { formatDate, cn } from '../src/lib/utils';
@@ -10,9 +10,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function JournalScreen() {
   const router = useRouter();
-  const { logs, tempLogs, cleaningTasks, storageUnits, completeCleaningTask, addTempLog, user } = useActiveStore();
-  const [activeTab, setActiveTab] = useState<'history' | 'calendar' | 'haccp'>('haccp');
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'actions' | 'products'>('all');
+  const { tempLogs, cleaningTasks, storageUnits, completeCleaningTask, addTempLog, user } = useActiveStore();
+  const [activeTab, setActiveTab] = useState<'calendar' | 'haccp'>('haccp');
   const [isAddingTemp, setIsAddingTemp] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState(storageUnits[0]?.id || '');
   const [tempValue, setTempValue] = useState('4');
@@ -30,17 +29,8 @@ export default function JournalScreen() {
 
   const tabs = [
     { id: 'haccp', label: 'HACCP', icon: ShieldCheck, enabled: user?.settings?.enableTemperature || user?.settings?.enableCleaning },
-    { id: 'history', label: 'Journal', icon: History, enabled: true },
     { id: 'calendar', label: 'Planning', icon: Calendar, enabled: true },
   ].filter((t) => t.enabled);
-
-  const filteredLogs = logs.filter((log) => {
-    if (log.action === 'temp_check' && !user?.settings?.enableTemperature) return false;
-    if (log.action === 'cleaning' && !user?.settings?.enableCleaning) return false;
-    if (historyFilter === 'actions') return ['temp_check', 'cleaning'].includes(log.action);
-    if (historyFilter === 'products') return ['add_product', 'use_product', 'discard_product'].includes(log.action);
-    return true;
-  });
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -66,54 +56,6 @@ export default function JournalScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 24, gap: 32 }}>
-        {activeTab === 'history' && (
-          <>
-            <View className="flex-row gap-2 p-1 bg-gray-100 rounded-xl">
-              {(['all', 'actions', 'products'] as const).map((f) => (
-                <Pressable key={f} onPress={() => setHistoryFilter(f)} className={cn('flex-1 py-2 rounded-lg', historyFilter === f ? 'bg-white' : '')}>
-                  <Text className={cn('text-[9px] font-black uppercase text-center', historyFilter === f ? 'text-gray-900' : 'text-gray-400')}>
-                    {f === 'all' ? 'Tout' : f === 'actions' ? 'HACCP' : 'Produits'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View className="gap-4">
-              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Flux</Text>
-              {filteredLogs.map((log) => (
-                <View key={log.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex-row gap-4">
-                  <View className={cn(
-                    'w-10 h-10 rounded-xl items-center justify-center',
-                    log.action === 'add_product' ? 'bg-success/10' :
-                      log.action === 'temp_check' ? 'bg-primary/10' :
-                      log.action === 'cleaning' ? 'bg-blue-500/10' : 'bg-gray-100'
-                  )}>
-                    {log.action === 'add_product' ? <CheckCircle2 size={18} color="#10B981" />
-                      : log.action === 'temp_check' ? <Thermometer size={18} color="#10B981" />
-                      : log.action === 'cleaning' ? <Sparkles size={18} color="#3B82F6" />
-                      : <Clock size={18} color="#9CA3AF" />}
-                  </View>
-                  <View className="flex-1 gap-1">
-                    <View className="flex-row justify-between">
-                      <Text className="text-xs font-black text-gray-900 uppercase flex-1">{log.details}</Text>
-                      <Text className="text-[8px] font-bold text-gray-400 uppercase">{formatDate(log.timestamp)}</Text>
-                    </View>
-                    <View className="flex-row items-center gap-1.5">
-                      <User size={10} color="#9CA3AF" />
-                      <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{log.userName}</Text>
-                    </View>
-                  </View>
-                </View>
-              ))}
-              {filteredLogs.length === 0 && (
-                <View className="py-12 items-center">
-                  <Text className="text-xs font-bold uppercase text-gray-400">Aucun log</Text>
-                </View>
-              )}
-            </View>
-          </>
-        )}
-
         {activeTab === 'calendar' && (
           <>
             <View className="bg-gray-900 rounded-3xl p-6 gap-6">

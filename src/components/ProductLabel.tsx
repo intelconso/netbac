@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import {
-  User as UserIcon, Thermometer, Calendar, Clock, MapPin,
+  Thermometer, Calendar, Clock, MapPin,
 } from 'lucide-react-native';
 import { Product } from '../types';
 import { formatDate, getDayColor, cn } from '../lib/utils';
@@ -122,17 +122,6 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
 
           <View className="flex-row justify-between items-end pt-2 border-t border-gray-100 gap-4">
             <View className="flex-row flex-1 gap-4">
-              <View className="flex-1 gap-0.5">
-                <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-[10px]' : 'text-[6px]')}>
-                  Opérateur
-                </Text>
-                <View className="flex-row items-center gap-1">
-                  <UserIcon size={isLg ? 12 : 8} color="#9CA3AF" />
-                  <Text className={cn('font-black text-gray-900 uppercase', isLg ? 'text-xs' : 'text-[8px]')}>
-                    {product.preparerName || 'Admin'}
-                  </Text>
-                </View>
-              </View>
               <View className="flex-1 gap-0.5">
                 <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-[10px]' : 'text-[6px]')}>
                   Temp.

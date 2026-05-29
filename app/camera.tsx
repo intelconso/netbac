@@ -9,7 +9,7 @@ import { useActiveStore } from '../src/lib/useActive';
 export default function CameraScreen() {
   const router = useRouter();
   const { unitId } = useLocalSearchParams<{ unitId?: string }>();
-  const { addLog, storageUnits } = useActiveStore();
+  const { storageUnits } = useActiveStore();
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
@@ -54,11 +54,6 @@ export default function CameraScreen() {
 
   const savePicture = () => {
     if (!capturedUri) return;
-    addLog({
-      action: 'temp_check',
-      details: unitName ? `Photo capturée pour ${unitName}` : 'Photo capturée',
-      entityId: unitId,
-    });
     router.back();
   };
 

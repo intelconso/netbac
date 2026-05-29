@@ -115,7 +115,6 @@ describe('pullFromCloud', () => {
       shelves: [],
       bacs: [],
       products: [],
-      logs: [],
       tempLogs: [],
       cleaningTasks: [],
       updatedAt: Date.now(),

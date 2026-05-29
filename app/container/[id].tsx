@@ -5,6 +5,7 @@ import { ArrowLeft, Trash2, CheckCircle2, History } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, formatDate, getDaysRemaining } from '../../src/lib/utils';
 import ProductLabel from '../../src/components/ProductLabel';
+import UsedAtPickerModal from '../../src/components/UsedAtPickerModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function BacDetailScreen() {
@@ -13,17 +14,19 @@ export default function BacDetailScreen() {
   const { bacs, products, updateProductStatus } = useActiveStore();
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [confirm, setConfirm] = useState<{ productId: string; productName: string; status: 'used' | 'discarded' } | null>(null);
+  const [usedAtPickerFor, setUsedAtPickerFor] = useState<any>(null);
 
   useFocusEffect(
     useCallback(() => {
       const onBack = () => {
+        if (usedAtPickerFor) { setUsedAtPickerFor(null); return true; }
         if (confirm) { setConfirm(null); return true; }
         if (selectedProduct) { setSelectedProduct(null); return true; }
         return false;
       };
       const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
       return () => sub.remove();
-    }, [confirm, selectedProduct])
+    }, [usedAtPickerFor, confirm, selectedProduct])
   );
 
   const bac = bacs.find((b) => b.id === id);
@@ -73,10 +76,22 @@ export default function BacDetailScreen() {
                   </Pressable>
                   <View className="flex-row bg-gray-50 border-t border-gray-100">
                     {days < 0 ? (
-                      <Pressable onPress={() => setConfirm({ productId: product.id, productName: product.name, status: 'discarded' })} className="flex-1 bg-danger py-4 flex-row items-center justify-center gap-2">
-                        <Trash2 size={14} color="#fff" />
-                        <Text className="text-[10px] font-black uppercase text-white">JETER (EXPIRÉ)</Text>
-                      </Pressable>
+                      <>
+                        <Pressable
+                          onPress={() => setUsedAtPickerFor(product)}
+                          className="flex-1 py-4 flex-row items-center justify-center gap-2 border-r border-gray-100 bg-success/10"
+                        >
+                          <CheckCircle2 size={14} color="#10B981" />
+                          <Text className="text-[10px] font-black uppercase text-success">Utilisé (date)</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setConfirm({ productId: product.id, productName: product.name, status: 'discarded' })}
+                          className="flex-1 bg-danger py-4 flex-row items-center justify-center gap-2"
+                        >
+                          <Trash2 size={14} color="#fff" />
+                          <Text className="text-[10px] font-black uppercase text-white">JETER</Text>
+                        </Pressable>
+                      </>
                     ) : (
                       <>
                         <Pressable onPress={() => setConfirm({ productId: product.id, productName: product.name, status: 'used' })} className="flex-1 py-4 flex-row items-center justify-center gap-2 border-r border-gray-100">
@@ -182,6 +197,20 @@ export default function BacDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {usedAtPickerFor && (
+        <UsedAtPickerModal
+          visible={!!usedAtPickerFor}
+          productName={usedAtPickerFor.name}
+          addedAt={usedAtPickerFor.addedAt}
+          dlc={usedAtPickerFor.dlc}
+          onCancel={() => setUsedAtPickerFor(null)}
+          onConfirm={(usedAt) => {
+            updateProductStatus(usedAtPickerFor.id, 'used', { usedAt });
+            setUsedAtPickerFor(null);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }

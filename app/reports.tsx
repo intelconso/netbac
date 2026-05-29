@@ -37,7 +37,6 @@ export default function ReportsScreen() {
 
   const [includeSummary, setIncludeSummary] = useState(true);
   const [includeTraceability, setIncludeTraceability] = useState(true);
-  const [includeActivity, setIncludeActivity] = useState(true);
 
   const [generating, setGenerating] = useState(false);
 
@@ -66,7 +65,7 @@ export default function ReportsScreen() {
     from, to, statuses, zoneId, unitId, shelfId, bacId,
     search: search || undefined,
     productNames: productFilters.length > 0 ? productFilters : undefined,
-    includeSummary, includeTraceability, includeActivity,
+    includeSummary, includeTraceability,
   };
 
   const matched = useMemo(() => filterProducts(state, filter), [state, filter]);
@@ -314,7 +313,6 @@ export default function ReportsScreen() {
             {[
               { id: 'summary', label: 'Résumé conformité', value: includeSummary, set: setIncludeSummary },
               { id: 'trace', label: 'Tableau de traçabilité', value: includeTraceability, set: setIncludeTraceability },
-              { id: 'activity', label: 'Historique d\'activité', value: includeActivity, set: setIncludeActivity },
             ].map((s) => (
               <Pressable key={s.id} onPress={() => s.set(!s.value)} className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center justify-between">
                 <Text className="text-xs font-bold text-gray-900">{s.label}</Text>

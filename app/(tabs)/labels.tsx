@@ -7,6 +7,7 @@ import { cn, formatDate, getDaysRemaining, getStatusColor } from '../../src/lib/
 import ProductLabel from '../../src/components/ProductLabel';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import UnitIcon from '../../src/components/UnitIcon';
+import UsedAtPickerModal from '../../src/components/UsedAtPickerModal';
 
 export default function AllLabelsScreen() {
   const router = useRouter();
@@ -47,10 +48,12 @@ export default function AllLabelsScreen() {
   });
 
   const [pendingStatus, setPendingStatus] = useState<'used' | 'discarded' | null>(null);
+  const [usedAtPickerFor, setUsedAtPickerFor] = useState<any>(null);
 
   useFocusEffect(
     useCallback(() => {
       const onBack = () => {
+        if (usedAtPickerFor) { setUsedAtPickerFor(null); return true; }
         if (pendingStatus) { setPendingStatus(null); return true; }
         if (showRemoveConfirm) { setShowRemoveConfirm(false); return true; }
         if (selectedProduct) { setSelectedProduct(null); return true; }
@@ -62,10 +65,18 @@ export default function AllLabelsScreen() {
       };
       const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
       return () => sub.remove();
-    }, [pendingStatus, showRemoveConfirm, selectedProduct, selectedZoneId, selectedUnitId, selectedShelfId, selectedBacId])
+    }, [usedAtPickerFor, pendingStatus, showRemoveConfirm, selectedProduct, selectedZoneId, selectedUnitId, selectedShelfId, selectedBacId])
   );
 
   const handleRemove = (status: 'used' | 'discarded') => {
+    // Back-dating: if the product has already expired and the user picked
+    // "Utilisé", route through the date picker instead of an immediate
+    // confirm. The picker enforces usedAt < dlc.
+    if (status === 'used' && selectedProduct && selectedProduct.dlc < Date.now()) {
+      setUsedAtPickerFor(selectedProduct);
+      setShowRemoveConfirm(false);
+      return;
+    }
     setPendingStatus(status);
   };
 
@@ -75,6 +86,14 @@ export default function AllLabelsScreen() {
       setSelectedProduct(null);
       setShowRemoveConfirm(false);
       setPendingStatus(null);
+    }
+  };
+
+  const handleUsedAtConfirm = (usedAt: number) => {
+    if (usedAtPickerFor) {
+      updateProductStatus(usedAtPickerFor.id, 'used', { usedAt });
+      setUsedAtPickerFor(null);
+      setSelectedProduct(null);
     }
   };
 
@@ -274,6 +293,17 @@ export default function AllLabelsScreen() {
           </View>
         </View>
       </Modal>
+
+      {usedAtPickerFor && (
+        <UsedAtPickerModal
+          visible={!!usedAtPickerFor}
+          productName={usedAtPickerFor.name}
+          addedAt={usedAtPickerFor.addedAt}
+          dlc={usedAtPickerFor.dlc}
+          onCancel={() => setUsedAtPickerFor(null)}
+          onConfirm={handleUsedAtConfirm}
+        />
+      )}
     </View>
   );
 }

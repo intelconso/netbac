@@ -6,6 +6,7 @@ import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
 import { ACTION_TYPES } from '../src/lib/actionTypes';
+import { validateCoolingCycle, computeCoolingDlc } from '../src/lib/cooling';
 import { addDays, startOfDay, addMonths, startOfMonth, endOfMonth, getDay, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import ProductLabel from '../src/components/ProductLabel';
@@ -34,6 +35,12 @@ export default function AddProductScreen() {
   const [actionType, setActionType] = useState<ActionType>(existingProduct?.actionType || 'received');
   const [temperature, setTemperature] = useState(existingProduct?.temperature?.toString() || '');
   const [origin, setOrigin] = useState(existingProduct?.origin || '');
+  // Refroidissement rapide HACCP — only used when actionType === 'cooling'.
+  const [coolStartTime, setCoolStartTime] = useState(existingProduct?.coolingStartedAt ? format(new Date(existingProduct.coolingStartedAt), 'HH:mm') : '');
+  const [coolEndTime, setCoolEndTime] = useState(existingProduct?.coolingFinishedAt ? format(new Date(existingProduct.coolingFinishedAt), 'HH:mm') : '');
+  const [coolTempStart, setCoolTempStart] = useState(existingProduct?.coolingTempStart?.toString() || '');
+  const [coolTempEnd, setCoolTempEnd] = useState(existingProduct?.coolingTempEnd?.toString() || '');
+  const [coolingErrors, setCoolingErrors] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
@@ -61,12 +68,41 @@ export default function AddProductScreen() {
 
   const handleActionTypeChange = (type: ActionType) => {
     setActionType(type);
+    setCoolingErrors([]);
     const def = ACTION_TYPES.find((a) => a.id === type);
     setDlc(addDays(startOfDay(new Date()), def?.dlcDays ?? 3).getTime());
   };
 
+  // "14:30" → epoch ms today. Returns NaN if input is empty or malformed.
+  const parseTimeToToday = (hhmm: string): number => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+    if (!m) return NaN;
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (h > 23 || min > 59) return NaN;
+    const d = new Date();
+    d.setHours(h, min, 0, 0);
+    return d.getTime();
+  };
+
   const handleSubmit = () => {
     if (!name || !quantity || !bacId) return;
+    let coolingFields: Partial<{ coolingStartedAt: number; coolingFinishedAt: number; coolingTempStart: number; coolingTempEnd: number }> = {};
+    let dlcToSave = dlc;
+    if (actionType === 'cooling') {
+      const startedAt = parseTimeToToday(coolStartTime);
+      const finishedAt = parseTimeToToday(coolEndTime);
+      const tempStart = parseFloat(coolTempStart);
+      const tempEnd = parseFloat(coolTempEnd);
+      const errors = validateCoolingCycle({ startedAt, finishedAt, tempStart, tempEnd });
+      if (errors.length) {
+        setCoolingErrors(errors);
+        return;
+      }
+      setCoolingErrors([]);
+      coolingFields = { coolingStartedAt: startedAt, coolingFinishedAt: finishedAt, coolingTempStart: tempStart, coolingTempEnd: tempEnd };
+      dlcToSave = computeCoolingDlc(finishedAt);
+    }
     const dupe = findDuplicateProduct(products, bacId, name, params.productId);
     if (dupe) {
       setDuplicateId(dupe.id);
@@ -74,11 +110,11 @@ export default function AddProductScreen() {
     }
     const productData: any = {
       bacId, name,
-      quantity: parseFloat(quantity), unit, dlc, actionType,
+      quantity: parseFloat(quantity), unit, dlc: dlcToSave, actionType,
+      ...coolingFields,
     };
     if (temperature) productData.temperature = parseFloat(temperature);
     if (origin) productData.origin = origin;
-    if (user?.name) productData.preparerName = user.name;
     if (editMode && params.productId) updateProduct(params.productId, productData);
     else addProduct(productData);
     setShowSuccess(true);
@@ -127,7 +163,7 @@ export default function AddProductScreen() {
                 quantity: parseFloat(quantity) || 0, unit,
                 addedAt: Date.now(), dlc, status: 'active', actionType,
                 temperature: temperature ? parseFloat(temperature) : undefined, origin,
-                preparerName: user?.name || 'Chef', modifiedAt: Date.now(), syncStatus: 'synced',
+                modifiedAt: Date.now(), syncStatus: 'synced',
               }}
               size="sm"
             />
@@ -179,6 +215,33 @@ export default function AddProductScreen() {
               })}
             </View>
           </View>
+
+          {actionType === 'cooling' && (
+            <View className="gap-3 bg-blue-50 border-2 border-blue-100 p-4 rounded-2xl">
+              <Text className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Cycle de refroidissement HACCP</Text>
+              <Text className="text-[9px] font-bold text-blue-600/80">63 °C → 10 °C en 2 h max. DLC = +3 jours à compter de la fin du cycle.</Text>
+              <View className="flex-row gap-3">
+                <View className="flex-1 gap-1">
+                  <Text className="text-[9px] font-bold text-gray-500 uppercase">Heure début</Text>
+                  <TextInput value={coolStartTime} onChangeText={setCoolStartTime} placeholder="14:00" keyboardType="numbers-and-punctuation" className="bg-white border border-blue-100 p-3 rounded-xl text-xs font-bold" />
+                </View>
+                <View className="flex-1 gap-1">
+                  <Text className="text-[9px] font-bold text-gray-500 uppercase">Heure fin</Text>
+                  <TextInput value={coolEndTime} onChangeText={setCoolEndTime} placeholder="15:45" keyboardType="numbers-and-punctuation" className="bg-white border border-blue-100 p-3 rounded-xl text-xs font-bold" />
+                </View>
+              </View>
+              <View className="flex-row gap-3">
+                <View className="flex-1 gap-1">
+                  <Text className="text-[9px] font-bold text-gray-500 uppercase">T° début (°C)</Text>
+                  <TextInput value={coolTempStart} onChangeText={setCoolTempStart} placeholder="63" keyboardType="decimal-pad" className="bg-white border border-blue-100 p-3 rounded-xl text-xs font-bold" />
+                </View>
+                <View className="flex-1 gap-1">
+                  <Text className="text-[9px] font-bold text-gray-500 uppercase">T° fin (°C)</Text>
+                  <TextInput value={coolTempEnd} onChangeText={setCoolTempEnd} placeholder="8" keyboardType="decimal-pad" className="bg-white border border-blue-100 p-3 rounded-xl text-xs font-bold" />
+                </View>
+              </View>
+            </View>
+          )}
 
           <View className="gap-3">
             <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Nom du produit</Text>
@@ -266,6 +329,13 @@ export default function AddProductScreen() {
       </ScrollView>
 
       <View className="p-6 bg-white border-t border-gray-100 gap-2">
+        {coolingErrors.length > 0 && (
+          <View className="gap-1 bg-red-50 border border-red-200 rounded-xl p-3 mb-1">
+            {coolingErrors.map((err, i) => (
+              <Text key={i} className="text-[10px] font-bold text-red-700">{err}</Text>
+            ))}
+          </View>
+        )}
         {!isValid && (
           <Text className="text-[9px] font-bold text-amber-500 uppercase tracking-widest text-center">
             {missingFields.join(' • ')} requis
