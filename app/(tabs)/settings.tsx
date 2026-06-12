@@ -35,7 +35,7 @@ export default function SettingsScreen() {
   const removeCustomActionType = useStore((s) => s.removeCustomActionType);
   const setDefaultActionTypeDisabled = useStore((s) => s.setDefaultActionTypeDisabled);
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'units' | 'actionTypes' | 'fabricationTypes'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [editingUnit, setEditingUnit] = useState<{ original: string; value: string } | null>(null);
@@ -54,6 +54,10 @@ export default function SettingsScreen() {
         }
         if (drillDown.zoneId) {
           setDrillDown({});
+          return true;
+        }
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes') {
+          setSection('custom');
           return true;
         }
         if (section !== 'menu') {
@@ -116,12 +120,16 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'units' | 'actionTypes' | 'fabricationTypes' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
+    { id: 'custom', label: 'Personnalisation', description: "Unités, types d'action, types de fabrication", icon: Tag },
+    { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
+  ];
+
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
-    { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
   if (section === 'menu') {
@@ -174,11 +182,49 @@ export default function SettingsScreen() {
     );
   }
 
-  if (section === 'units') {
+  if (section === 'custom') {
     return (
       <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24 }}>
         <View className="mb-6 flex-row items-center gap-3">
           <Pressable onPress={() => setSection('menu')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Personnalisation</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Unités & types</Text>
+          </View>
+        </View>
+
+        <View className="gap-3">
+          {customItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => setSection(item.id)}
+                className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center gap-4"
+              >
+                <View className="w-12 h-12 rounded-xl bg-primary/10 items-center justify-center">
+                  <Icon size={20} color="#10B981" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-black text-gray-900 uppercase">{item.label}</Text>
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{item.description}</Text>
+                </View>
+                <ChevronRight size={16} color="#D1D5DB" />
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (section === 'units') {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24 }}>
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
             <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
           </Pressable>
           <View>
@@ -262,7 +308,7 @@ export default function SettingsScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
         <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
           <View className="mb-6 flex-row items-center gap-3">
-            <Pressable onPress={() => setSection('menu')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
               <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
             </Pressable>
             <View>
@@ -317,7 +363,7 @@ export default function SettingsScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="mb-6 flex-row items-center gap-3">
-          <Pressable onPress={() => setSection('menu')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+          <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
             <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
           </Pressable>
           <View>
