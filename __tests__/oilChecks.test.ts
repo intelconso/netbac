@@ -64,6 +64,10 @@ describe('oil check CRUD', () => {
     expect(check.timestamp).toBe(yesterdayNoon);
     expect(check.modifiedAt).toBeGreaterThan(yesterdayNoon);
     expect(check.backfilled).toBe(true);
+    // The real entry moment is kept separately and survives later edits.
+    expect(check.recordedAt).toBeGreaterThan(yesterdayNoon);
+    useStore.getState().updateOilCheck(check.id, { result: 'non_conforme' });
+    expect(useStore.getState().oilChecks[0].recordedAt).toBe(check.recordedAt);
   });
 
   it('soft-deletes with a tombstone instead of removing', () => {

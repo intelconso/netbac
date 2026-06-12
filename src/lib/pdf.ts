@@ -121,13 +121,12 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const oilSection = f.includeOilChecks !== false && oilChecks.length > 0
     ? `<h2>Contrôles des huiles de friture (${oilChecks.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Résultat</th><th>Huile changée</th><th>Contrôleur</th><th>Notes</th></tr></thead>
+         <thead><tr><th>Date</th><th>Résultat</th><th>Huile changée</th><th>Notes</th></tr></thead>
          <tbody>${oilChecks.map((c) => `
            <tr>
              <td>${formatDate(c.timestamp)}</td>
              <td><span class="badge ${c.result === 'conforme' ? 'ok' : 'discarded'}">${c.result === 'conforme' ? 'Conforme' : 'Non conforme'}</span></td>
              <td>${c.oilChanged ? 'Oui — récupération organisme agréé' : '—'}</td>
-             <td>${c.operatorName}</td>
              <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.notes].filter(Boolean).join(' — ')}</td>
            </tr>`).join('')}</tbody>
        </table>`
@@ -140,7 +139,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const fridgeSection = f.includeFridgeTemps !== false && fridgeTemps.length > 0
     ? `<h2>Relevés des températures frigorifiques (${fridgeTemps.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Service</th><th>Enceinte</th><th>T°C</th><th>Conformité</th><th>Action corrective</th><th>Contrôleur</th></tr></thead>
+         <thead><tr><th>Date</th><th>Service</th><th>Enceinte</th><th>T°C</th><th>Conformité</th><th>Action corrective</th></tr></thead>
          <tbody>${fridgeTemps.map((c) => `
            <tr>
              <td>${formatDate(c.timestamp)}</td>
@@ -149,7 +148,6 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
              <td>${c.temperature}°C</td>
              <td><span class="badge ${c.conform ? 'ok' : 'discarded'}">${c.conform ? 'Conforme' : 'Non conforme'}</span></td>
              <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
-             <td>${c.operatorName}</td>
            </tr>`).join('')}</tbody>
        </table>`
     : '';

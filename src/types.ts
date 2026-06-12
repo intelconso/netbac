@@ -87,13 +87,18 @@ export interface OilCheck {
   timestamp: number;
   result: 'conforme' | 'non_conforme';
   oilChanged: boolean;
-  operatorId: string;
-  operatorName: string;
+  // Legacy — the app has a single role, operator is no longer recorded.
+  // Kept optional so records written by older versions still parse.
+  operatorId?: string;
+  operatorName?: string;
   notes?: string;
   // Entered after the fact for a missed day: `timestamp` sits on the day the
-  // control covers, `modifiedAt` is the real entry time. Flagged for audit
+  // control covers, `recordedAt` is the real entry time. Flagged for audit
   // transparency in history and PDF reports.
   backfilled?: boolean;
+  // Exact moment the entry was created. Never changes afterwards — unlike
+  // modifiedAt, which is bumped by edits for sync purposes.
+  recordedAt?: number;
   modifiedAt: number;
   deletedAt?: number;
 }
@@ -111,10 +116,13 @@ export interface FridgeTempCheck {
   temperature: number;
   conform: boolean;
   correctiveAction?: string;
-  operatorId: string;
-  operatorName: string;
+  // Legacy — see OilCheck: single-role app, no longer recorded.
+  operatorId?: string;
+  operatorName?: string;
   // Entered after the fact for a missed day — see OilCheck.backfilled.
   backfilled?: boolean;
+  // Exact creation moment, immutable — see OilCheck.recordedAt.
+  recordedAt?: number;
   modifiedAt: number;
   deletedAt?: number;
 }

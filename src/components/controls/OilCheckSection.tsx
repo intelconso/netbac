@@ -12,7 +12,7 @@ import { fr } from 'date-fns/locale';
 // `embedded`: rendered inside a card that already shows the title and the
 // done/to-do status, so the header row and status banners are skipped.
 export default function OilCheckSection({ embedded = false }: { embedded?: boolean }) {
-  const { oilChecks, addOilCheck, updateOilCheck, user } = useActiveStore();
+  const { oilChecks, addOilCheck, updateOilCheck } = useActiveStore();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Start-of-day timestamp of the missed day being backfilled, null otherwise.
@@ -61,8 +61,6 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
       addOilCheck(
         {
           ...data,
-          operatorId: user?.id || 'admin',
-          operatorName: user?.name || 'Admin',
           ...(backfillDay ? { backfilled: true } : {}),
         },
         // Noon keeps the backfilled check safely inside its day across DST.
@@ -180,7 +178,7 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
                   {check.oilChanged ? ' • Huile changée' : ''}
                 </Text>
                 <Text className="text-[9px] font-bold text-gray-400 uppercase">
-                  {formatDate(check.timestamp)} • {check.operatorName}
+                  {formatDate(check.timestamp)}
                 </Text>
               </View>
             </View>

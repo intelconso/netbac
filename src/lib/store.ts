@@ -30,10 +30,10 @@ interface StoreActions {
   setDefaultActionTypeDisabled: (id: ActionType, disabled: boolean) => void;
   addTempLog: (log: Omit<TemperatureLog, 'id' | 'timestamp'>) => void;
   addOilCheck: (check: Omit<OilCheck, 'id' | 'timestamp' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
-  updateOilCheck: (id: string, check: Partial<Omit<OilCheck, 'id' | 'timestamp' | 'modifiedAt'>>) => void;
+  updateOilCheck: (id: string, check: Partial<Omit<OilCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
   deleteOilCheck: (id: string) => void;
   addFridgeTempCheck: (check: Omit<FridgeTempCheck, 'id' | 'timestamp' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
-  updateFridgeTempCheck: (id: string, check: Partial<Omit<FridgeTempCheck, 'id' | 'timestamp' | 'modifiedAt'>>) => void;
+  updateFridgeTempCheck: (id: string, check: Partial<Omit<FridgeTempCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
   deleteFridgeTempCheck: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
@@ -300,7 +300,7 @@ export const useStore = create<AppState & StoreActions>()(
       addOilCheck: (check, options) => {
         const now = Date.now();
         set((state) => ({
-          oilChecks: [...state.oilChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, modifiedAt: now } as OilCheck],
+          oilChecks: [...state.oilChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as OilCheck],
         }));
       },
 
@@ -319,7 +319,7 @@ export const useStore = create<AppState & StoreActions>()(
       addFridgeTempCheck: (check, options) => {
         const now = Date.now();
         set((state) => ({
-          fridgeTempChecks: [...state.fridgeTempChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, modifiedAt: now } as FridgeTempCheck],
+          fridgeTempChecks: [...state.fridgeTempChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as FridgeTempCheck],
         }));
       },
 

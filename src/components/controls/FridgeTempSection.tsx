@@ -17,7 +17,7 @@ const SERVICES = [
 // et par enceinte (début / fin de service). Conformité dérivée de la plage
 // réglementaire du type d'enceinte ; action corrective exigée en cas d'écart.
 export default function FridgeTempSection() {
-  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck, user } = useActiveStore();
+  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck } = useActiveStore();
   const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
 
   const [service, setService] = useState<'debut' | 'fin'>('debut');
@@ -84,8 +84,6 @@ export default function FridgeTempSection() {
           ...data,
           unitId,
           service,
-          operatorId: user?.id || 'admin',
-          operatorName: user?.name || 'Admin',
           ...(backfillDay ? { backfilled: true } : {}),
         },
         // Backfilled readings land at plausible service times of their day.
@@ -150,7 +148,7 @@ export default function FridgeTempSection() {
                   <View className="flex-1">
                     <Text className="text-xs font-black text-gray-900 uppercase">{unit.name}</Text>
                     <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">
-                      {format(new Date(existing.timestamp), 'HH:mm', { locale: fr })} • {existing.operatorName}
+                      {format(new Date(existing.timestamp), 'HH:mm', { locale: fr })}
                       {existing.correctiveAction ? ` • ${existing.correctiveAction}` : ''}
                     </Text>
                   </View>
