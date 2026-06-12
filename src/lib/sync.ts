@@ -22,6 +22,8 @@ const CLOUD_KEYS = [
   'tempLogs',
   'cleaningTasks',
   'productUnits',
+  'customActionTypes',
+  'defaultActionTypeStates',
   'user',
 ] as const;
 
@@ -142,6 +144,8 @@ export function startSync(uid: string): void {
       tempLogs: state.tempLogs,
       cleaningTasks: state.cleaningTasks,
       productUnits: state.productUnits,
+      customActionTypes: state.customActionTypes,
+      defaultActionTypeStates: state.defaultActionTypeStates,
       user: state.user,
     });
     if (lastDataSnapshot === dataKey) return;

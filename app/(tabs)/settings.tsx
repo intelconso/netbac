@@ -1,12 +1,14 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2, FileText } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2, FileText, Tag } from 'lucide-react-native';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useActiveStore } from '../../src/lib/useActive';
+import { useStore } from '../../src/lib/store';
 import { cn } from '../../src/lib/utils';
-import { ContainerType, StorageUnit, ZoneType } from '../../src/types';
+import { ActionType, ContainerType, StorageUnit, ZoneType } from '../../src/types';
+import { ACTION_TYPES } from '../../src/lib/actionTypes';
 import CreateZoneModal from '../../src/components/CreateZoneModal';
 import CreateUnitModal from '../../src/components/CreateUnitModal';
 import CreateBacModal from '../../src/components/CreateBacModal';
@@ -24,11 +26,23 @@ export default function SettingsScreen() {
     addBac, deleteBac,
     productUnits, addProductUnit, updateProductUnit, deleteProductUnit,
   } = useActiveStore();
+  // Direct selectors — useActiveStore destructure doesn't always re-render on
+  // these new fields in Zustand 5; selectors guarantee a fresh subscription.
+  const customActionTypes = useStore((s) => s.customActionTypes);
+  const defaultActionTypeStates = useStore((s) => s.defaultActionTypeStates);
+  const addCustomActionType = useStore((s) => s.addCustomActionType);
+  const removeCustomActionType = useStore((s) => s.removeCustomActionType);
+  const setDefaultActionTypeDisabled = useStore((s) => s.setDefaultActionTypeDisabled);
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'units'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'units' | 'actionTypes'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [editingUnit, setEditingUnit] = useState<{ original: string; value: string } | null>(null);
+  const [newActionLabel, setNewActionLabel] = useState('');
+  const [newActionDays, setNewActionDays] = useState('3');
+  const [actionTypeError, setActionTypeError] = useState<string | null>(null);
+  const [confirmDeleteCustom, setConfirmDeleteCustom] = useState<{ id: string; label: string } | null>(null);
+  const [confirmDisableDefault, setConfirmDisableDefault] = useState<{ id: ActionType; label: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,9 +115,10 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'units' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'units' | 'actionTypes' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
+    { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
@@ -237,6 +252,201 @@ export default function SettingsScreen() {
           })}
         </View>
       </ScrollView>
+    );
+  }
+
+  if (section === 'actionTypes') {
+    const disabledById = new Map((defaultActionTypeStates ?? []).map((s) => [s.id, s.disabled]));
+    const liveCustoms = (customActionTypes ?? []).filter((c) => !c.deletedAt);
+    const MIN_DLC_DAYS = 1;
+    const handleAddAction = () => {
+      const label = newActionLabel.trim();
+      const days = parseInt(newActionDays, 10);
+      if (!label) {
+        setActionTypeError('Donne un nom au type.');
+        return;
+      }
+      if (isNaN(days) || days < MIN_DLC_DAYS) {
+        setActionTypeError(`La DLC doit être d'au moins ${MIN_DLC_DAYS} jour.`);
+        return;
+      }
+      addCustomActionType({ label, dlcDays: days });
+      setNewActionLabel('');
+      setNewActionDays('3');
+      setActionTypeError(null);
+    };
+    const performRemoveAction = (id: string) => {
+      const res = removeCustomActionType(id);
+      if (!res.ok) setActionTypeError(res.error ?? null);
+      else setActionTypeError(null);
+      setConfirmDeleteCustom(null);
+    };
+    const performDisableDefault = (id: ActionType) => {
+      setDefaultActionTypeDisabled(id, true);
+      setConfirmDisableDefault(null);
+    };
+    return (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1 bg-background"
+      >
+      <ScrollView
+        className="flex-1 bg-background"
+        contentContainerStyle={{ padding: 24, paddingBottom: 80 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('menu')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Types d'action</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Défauts + personnalisés</Text>
+          </View>
+        </View>
+
+        <View className="gap-6">
+          <View className="gap-2">
+            <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Types par défaut</Text>
+            {ACTION_TYPES.map((def) => {
+              const Icon = def.icon;
+              const disabled = disabledById.get(def.id as ActionType) === true;
+              return (
+                <View key={def.id} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-3">
+                  <View className={cn('w-10 h-10 rounded-xl items-center justify-center', disabled ? 'bg-gray-100' : 'bg-primary/10')}>
+                    <Icon size={18} color={disabled ? '#9CA3AF' : '#10B981'} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className={cn('text-sm font-black uppercase', disabled ? 'text-gray-400' : 'text-gray-900')}>{def.label}</Text>
+                    <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">DLC défaut: {def.dlcDays} j</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => {
+                      if (disabled) setDefaultActionTypeDisabled(def.id as ActionType, false);
+                      else setConfirmDisableDefault({ id: def.id as ActionType, label: def.label });
+                    }}
+                    className={cn('px-3 py-1.5 rounded-xl', disabled ? 'bg-gray-100' : 'bg-success/10')}
+                  >
+                    <Text className={cn('text-[10px] font-black uppercase', disabled ? 'text-gray-500' : 'text-success')}>
+                      {disabled ? 'Désactivé' : 'Activé'}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+
+          <View className="gap-2">
+            <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Vos types personnalisés</Text>
+            <View className="bg-white rounded-2xl border border-gray-100 p-3 gap-2">
+              <TextInput
+                value={newActionLabel}
+                onChangeText={setNewActionLabel}
+                placeholder="Nom (ex: Mariné, Saumuré...)"
+                className="px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold text-gray-900"
+              />
+              <View className="flex-row gap-2 items-center">
+                <Text className="text-[10px] font-bold text-gray-400 uppercase">DLC (jours)</Text>
+                <TextInput
+                  value={newActionDays}
+                  onChangeText={setNewActionDays}
+                  keyboardType="number-pad"
+                  className="flex-1 px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold text-gray-900"
+                />
+                <Pressable
+                  onPress={handleAddAction}
+                  disabled={!newActionLabel.trim()}
+                  className={cn('w-10 h-10 rounded-xl items-center justify-center', newActionLabel.trim() ? 'bg-primary' : 'bg-gray-100')}
+                >
+                  <Plus size={18} color={newActionLabel.trim() ? '#fff' : '#9CA3AF'} />
+                </Pressable>
+              </View>
+            </View>
+
+            {actionTypeError && (
+              <View className="bg-red-50 border border-red-200 rounded-xl p-3">
+                <Text className="text-[10px] font-bold text-red-700">{actionTypeError}</Text>
+              </View>
+            )}
+
+            {liveCustoms.length === 0 ? (
+              <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center">
+                <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Aucun type personnalisé</Text>
+              </View>
+            ) : (
+              liveCustoms.map((c) => (
+                <View key={c.id} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-3">
+                  <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center">
+                    <Tag size={18} color="#10B981" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-black text-gray-900 uppercase">{c.label}</Text>
+                    <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">DLC défaut: {c.dlcDays} j</Text>
+                  </View>
+                  <Pressable onPress={() => setConfirmDeleteCustom({ id: c.id, label: c.label })} className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
+                    <Trash2 size={16} color="#EF4444" />
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
+      </ScrollView>
+
+      <Modal visible={!!confirmDeleteCustom} transparent animationType="fade" onRequestClose={() => setConfirmDeleteCustom(null)}>
+        <View className="flex-1 bg-black/60 items-center justify-center p-6">
+          <View className="bg-white w-full rounded-3xl p-6 gap-4" style={{ maxWidth: 400 }}>
+            <View className="items-center gap-1">
+              <View className="w-14 h-14 rounded-full bg-red-50 items-center justify-center mb-1">
+                <Trash2 size={24} color="#EF4444" />
+              </View>
+              <Text className="text-base font-black uppercase text-gray-900 text-center">Supprimer le type ?</Text>
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">{confirmDeleteCustom?.label}</Text>
+              <Text className="text-[11px] font-medium text-gray-500 text-center mt-2">
+                Bloquée si des étiquettes <Text className="font-bold">actives</Text> utilisent encore ce type. L'historique (utilisées / jetées) reste affichable.
+              </Text>
+            </View>
+            <View className="flex-row gap-3">
+              <Pressable onPress={() => setConfirmDeleteCustom(null)} className="flex-1 bg-gray-50 py-3 rounded-2xl">
+                <Text className="text-gray-400 font-black uppercase text-xs text-center">Annuler</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => confirmDeleteCustom && performRemoveAction(confirmDeleteCustom.id)}
+                className="flex-[2] bg-danger py-3 rounded-2xl"
+              >
+                <Text className="text-white font-black uppercase text-xs text-center">Supprimer</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!confirmDisableDefault} transparent animationType="fade" onRequestClose={() => setConfirmDisableDefault(null)}>
+        <View className="flex-1 bg-black/60 items-center justify-center p-6">
+          <View className="bg-white w-full rounded-3xl p-6 gap-4" style={{ maxWidth: 400 }}>
+            <View className="items-center gap-1">
+              <View className="w-14 h-14 rounded-full bg-gray-100 items-center justify-center mb-1">
+                <X size={24} color="#6B7280" />
+              </View>
+              <Text className="text-base font-black uppercase text-gray-900 text-center">Désactiver ?</Text>
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">{confirmDisableDefault?.label}</Text>
+              <Text className="text-[11px] font-medium text-gray-500 text-center mt-2">N'apparaîtra plus dans le picker. Les étiquettes existantes restent intactes. Réactivable à tout moment.</Text>
+            </View>
+            <View className="flex-row gap-3">
+              <Pressable onPress={() => setConfirmDisableDefault(null)} className="flex-1 bg-gray-50 py-3 rounded-2xl">
+                <Text className="text-gray-400 font-black uppercase text-xs text-center">Annuler</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => confirmDisableDefault && performDisableDefault(confirmDisableDefault.id)}
+                className="flex-[2] bg-gray-900 py-3 rounded-2xl"
+              >
+                <Text className="text-white font-black uppercase text-xs text-center">Désactiver</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      </KeyboardAvoidingView>
     );
   }
 

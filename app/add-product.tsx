@@ -5,7 +5,7 @@ import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, Chev
 import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
-import { ACTION_TYPES } from '../src/lib/actionTypes';
+import { ACTION_TYPES, getAvailableActionTypes } from '../src/lib/actionTypes';
 import { validateCoolingCycle, computeCoolingDlc } from '../src/lib/cooling';
 import { addDays, startOfDay, addMonths, startOfMonth, endOfMonth, getDay, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -17,7 +17,8 @@ const SUGGESTIONS = ['Poulet blanc', 'Escalope', 'Poulet rôti', 'Aiguillettes',
 export default function AddProductScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string; zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user, productUnits: UNITS } = useActiveStore();
+  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user, productUnits: UNITS, customActionTypes, defaultActionTypeStates } = useActiveStore();
+  const availableActionTypes = getAvailableActionTypes({ customActionTypes, defaultActionTypeStates });
 
   const editMode = params.editMode === 'true';
   const existingProduct = params.productId ? products.find((p) => p.id === params.productId) : null;
@@ -66,10 +67,10 @@ export default function AddProductScreen() {
     }, [showCalendar, duplicateId, isSelectingBac, selectionPath])
   );
 
-  const handleActionTypeChange = (type: ActionType) => {
-    setActionType(type);
+  const handleActionTypeChange = (type: string) => {
+    setActionType(type as ActionType);
     setCoolingErrors([]);
-    const def = ACTION_TYPES.find((a) => a.id === type);
+    const def = availableActionTypes.find((a) => a.id === type);
     setDlc(addDays(startOfDay(new Date()), def?.dlcDays ?? 3).getTime());
   };
 
@@ -202,24 +203,23 @@ export default function AddProductScreen() {
 
           <View className="gap-3">
             <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type d'action</Text>
-            <View className="flex-row gap-2">
-              {ACTION_TYPES.map((type) => {
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {availableActionTypes.map((type) => {
                 const Icon = type.icon;
                 const active = actionType === type.id;
                 return (
-                  <Pressable key={type.id} onPress={() => handleActionTypeChange(type.id)} className={cn('flex-1 py-3 rounded-xl border-2 items-center gap-1', active ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white')}>
+                  <Pressable key={type.id} onPress={() => handleActionTypeChange(type.id)} className={cn('py-3 px-4 rounded-xl border-2 items-center gap-1 min-w-[70px]', active ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white')}>
                     <Icon size={16} color={active ? '#10B981' : '#9CA3AF'} />
                     <Text className={cn('text-[8px] font-bold uppercase', active ? 'text-primary' : 'text-gray-400')}>{type.label}</Text>
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
 
           {actionType === 'cooling' && (
             <View className="gap-3 bg-blue-50 border-2 border-blue-100 p-4 rounded-2xl">
               <Text className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Cycle de refroidissement HACCP</Text>
-              <Text className="text-[9px] font-bold text-blue-600/80">63 °C → 10 °C en 2 h max. DLC = +3 jours à compter de la fin du cycle.</Text>
               <View className="flex-row gap-3">
                 <View className="flex-1 gap-1">
                   <Text className="text-[9px] font-bold text-gray-500 uppercase">Heure début</Text>

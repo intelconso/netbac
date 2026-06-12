@@ -89,6 +89,20 @@ export interface CleaningTask {
   deletedAt?: number;
 }
 
+export interface CustomActionType {
+  id: string;
+  label: string;
+  dlcDays: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+export interface DefaultActionTypeState {
+  id: ActionType;
+  disabled: boolean;
+  modifiedAt: number;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -113,6 +127,8 @@ export interface AppState {
   tempLogs: TemperatureLog[];
   cleaningTasks: CleaningTask[];
   productUnits: string[];
+  customActionTypes: CustomActionType[];
+  defaultActionTypeStates: DefaultActionTypeState[];
   user: User | null;
   isOffline: boolean;
   // Cloud sync state

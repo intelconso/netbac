@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, Bac, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -25,6 +25,9 @@ interface StoreActions {
   addProductUnit: (name: string) => void;
   updateProductUnit: (oldName: string, newName: string) => void;
   deleteProductUnit: (name: string) => void;
+  addCustomActionType: (data: { label: string; dlcDays: number }) => string;
+  removeCustomActionType: (id: string) => { ok: boolean; error?: string };
+  setDefaultActionTypeDisabled: (id: ActionType, disabled: boolean) => void;
   addTempLog: (log: Omit<TemperatureLog, 'id' | 'timestamp'>) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
@@ -44,6 +47,8 @@ const INITIAL_STATE: AppState = {
   tempLogs: [],
   cleaningTasks: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
+  customActionTypes: [],
+  defaultActionTypeStates: [],
   user: null,
   isOffline: false,
   lastSyncAt: null,
@@ -224,6 +229,58 @@ export const useStore = create<AppState & StoreActions>()(
         productUnits: state.productUnits.filter((u) => u !== name),
       })),
 
+      addCustomActionType: ({ label, dlcDays }) => {
+        const id = randomId();
+        const now = Date.now();
+        set((state) => ({
+          customActionTypes: [
+            ...state.customActionTypes,
+            { id, label: label.trim(), dlcDays, modifiedAt: now } as CustomActionType,
+          ],
+        }));
+        return id;
+      },
+
+      // Soft-delete (tombstone) so the sync union-merge can propagate the
+      // removal. Blocks only if an ACTIVE product still references this id —
+      // historical entries (used / discarded / tombstoned) keep displaying via
+      // getActionTypeDef which resolves even tombstoned customs.
+      removeCustomActionType: (id) => {
+        const inUseActive = get().products.some(
+          (p) => p.actionType === id && p.status === 'active' && !p.deletedAt
+        );
+        if (inUseActive) {
+          return { ok: false, error: "Des étiquettes actives utilisent encore ce type — change-les, marque-les utilisées ou jetées d'abord." };
+        }
+        const now = Date.now();
+        set((state) => ({
+          customActionTypes: state.customActionTypes.map((c) =>
+            c.id === id ? { ...c, deletedAt: now, modifiedAt: now } : c
+          ),
+        }));
+        return { ok: true };
+      },
+
+      setDefaultActionTypeDisabled: (id, disabled) => {
+        const now = Date.now();
+        set((state) => {
+          const existing = state.defaultActionTypeStates.find((s) => s.id === id);
+          if (existing) {
+            return {
+              defaultActionTypeStates: state.defaultActionTypeStates.map((s) =>
+                s.id === id ? { ...s, disabled, modifiedAt: now } : s
+              ),
+            };
+          }
+          return {
+            defaultActionTypeStates: [
+              ...state.defaultActionTypeStates,
+              { id, disabled, modifiedAt: now } as DefaultActionTypeState,
+            ],
+          };
+        });
+      },
+
       addTempLog: (log) => {
         const id = randomId();
         const timestamp = Date.now();
@@ -303,6 +360,8 @@ export const useStore = create<AppState & StoreActions>()(
             tempLogs: mergeAppendOnly(state.tempLogs, cloud.tempLogs),
             cleaningTasks: mergeNewer(state.cleaningTasks, cloud.cleaningTasks),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
+            customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
+            defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
             user: state.user ?? cloud.user ?? null,
           } as Partial<AppState> as any;
         }),
@@ -321,6 +380,8 @@ export const useStore = create<AppState & StoreActions>()(
         tempLogs: state.tempLogs,
         cleaningTasks: state.cleaningTasks,
         productUnits: state.productUnits,
+        customActionTypes: state.customActionTypes,
+        defaultActionTypeStates: state.defaultActionTypeStates,
         user: state.user,
         isOffline: state.isOffline,
         lastSyncAt: state.lastSyncAt,

@@ -98,7 +98,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ? `<h2>Traçabilité (${filtered.length})</h2>
        ${filtered.length === 0 ? '<p class="empty">Aucun produit pour ce filtre.</p>' : `
        <table>
-         <thead><tr><th>Produit</th><th>Qté</th><th>Emplacement</th><th>Ajouté</th><th>DLC</th><th>Modifié</th><th>Statut</th></tr></thead>
+         <thead><tr><th>Produit</th><th>Qté</th><th>Emplacement</th><th>Ajouté</th><th>DLC</th><th>Sortie</th><th>Statut</th></tr></thead>
          <tbody>${filtered.map((p) => `
            <tr>
              <td><strong>${p.name}</strong></td>
@@ -106,7 +106,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
              <td>${locFor(state, p.bacId)}</td>
              <td>${formatDate(p.addedAt)}</td>
              <td>${formatDate(p.dlc)}</td>
-             <td>${formatDate(p.modifiedAt)}</td>
+             <td>${p.status === 'active' ? '—' : formatDate(p.usedAt ?? p.modifiedAt)}</td>
              <td><span class="badge ${statusClass(p.status)}">${statusLabel(p.status)}</span></td>
            </tr>`).join('')}</tbody>
        </table>`}`

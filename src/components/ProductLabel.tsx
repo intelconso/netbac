@@ -6,7 +6,7 @@ import {
 import { Product } from '../types';
 import { formatDate, getDayColor, cn } from '../lib/utils';
 import { useActiveStore } from '../lib/useActive';
-import { ACTION_TYPES, getActionType } from '../lib/actionTypes';
+import { getActionTypeDef } from '../lib/actionTypes';
 
 interface ProductLabelProps {
   product: Product;
@@ -15,7 +15,7 @@ interface ProductLabelProps {
 }
 
 export default function ProductLabel({ product, size = 'sm', className }: ProductLabelProps) {
-  const { zones, storageUnits, shelves, bacs } = useActiveStore();
+  const { zones, storageUnits, shelves, bacs, customActionTypes, defaultActionTypeStates } = useActiveStore();
   const dayColor = getDayColor(product.addedAt);
 
   const bac = bacs.find((b) => b.id === product.bacId);
@@ -27,7 +27,7 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
     ? `${unit.name} • ${shelf.name} • ${bac.name}`
     : 'Emplacement inconnu';
 
-  const actions = ACTION_TYPES;
+  const productDef = getActionTypeDef(product.actionType, { customActionTypes, defaultActionTypeStates });
 
   const isLg = size === 'lg';
 
@@ -37,21 +37,16 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
 
       <View className={cn('flex-col gap-4', isLg ? 'pl-8' : 'pl-4')}>
         <View className="flex-row justify-between items-center border-b border-gray-100 pb-3">
-          <View className="flex-row gap-3">
-            {actions.map((action) => {
-              const active = product.actionType === action.id;
-              const Icon = action.icon;
-              return (
-                <View key={action.id} className="items-center gap-1">
-                  <View className={cn('border-2 rounded items-center justify-center', isLg ? 'w-8 h-8' : 'w-5 h-5', active ? 'border-gray-900 bg-gray-900' : 'border-gray-200')}>
-                    {active && <Icon size={isLg ? 16 : 10} color="#fff" />}
-                  </View>
-                  <Text className={cn('font-black uppercase', isLg ? 'text-[10px]' : 'text-[7px]', active ? 'text-gray-900' : 'text-gray-200')}>
-                    {action.label}
-                  </Text>
-                </View>
-              );
-            })}
+          <View className="flex-row items-center gap-2">
+            <View className={cn('rounded items-center justify-center bg-gray-900', isLg ? 'w-10 h-10' : 'w-7 h-7')}>
+              {(() => {
+                const Icon = productDef.icon;
+                return <Icon size={isLg ? 20 : 14} color="#fff" />;
+              })()}
+            </View>
+            <Text className={cn('font-black uppercase text-gray-900', isLg ? 'text-base' : 'text-[11px]')}>
+              {productDef.label}
+            </Text>
           </View>
           <View className="items-end">
             <Text className={cn('font-black text-primary uppercase', isLg ? 'text-sm' : 'text-[10px]')}>NETBAC</Text>
@@ -100,7 +95,7 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
               <View className="flex-row items-center gap-1">
                 <Calendar size={isLg ? 14 : 10} color="#9CA3AF" />
                 <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-[10px]' : 'text-[7px]')}>
-                  Date {getActionType(product.actionType).shortLabel}
+                  Date {productDef.shortLabel}
                 </Text>
               </View>
               <Text className={cn('font-black text-gray-900', isLg ? 'text-2xl' : 'text-sm')}>
