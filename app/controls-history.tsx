@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, Sparkles, Thermometer, XCircle } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
@@ -30,7 +30,7 @@ interface DayEntry {
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, storageUnits } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
   // Which control group is expanded for the displayed day.
   const [openControl, setOpenControl] = useState<string | null>(null);
@@ -46,8 +46,8 @@ export default function ControlsHistoryScreen() {
   const dayEnd = day + DAY - 1;
 
   const earliest = useMemo(
-    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks]
+    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions]
   );
   const canGoBack = day > startOfDay(new Date(earliest)).getTime();
   const canGoForward = day < startOfDay(new Date()).getTime();
@@ -145,14 +145,36 @@ export default function ControlsHistoryScreen() {
         ],
       }));
 
+    const receptionEntries: DayEntry[] = receptions
+      .filter((r) => r.timestamp >= dayStart && r.timestamp <= dayEnd)
+      .map((r) => ({
+        id: r.id,
+        control: 'Réceptions',
+        icon: Truck,
+        ok: r.result === 'conforme',
+        title: r.supplier,
+        subtitle: `${format(new Date(r.timestamp), 'HH:mm', { locale: fr })}${r.reference ? ` • ${r.reference}` : ''}`,
+        timestamp: r.timestamp,
+        ...(r.result === 'non_conforme' ? { badge: 'Non conforme', badgeTone: 'danger' as const } : {}),
+        details: [
+          { label: 'Fournisseur', value: r.supplier },
+          ...(r.reference ? [{ label: 'N° de BL / facture', value: r.reference }] : []),
+          { label: 'Contrôle à réception', value: r.result === 'conforme' ? 'Conforme' : 'Non conforme' },
+          ...(r.correctiveAction ? [{ label: 'Action corrective', value: r.correctiveAction }] : []),
+          { label: 'Date', value: format(new Date(r.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+          ...(r.backfilled ? [{ label: 'Saisie', value: 'A posteriori (jour complété plus tard)' }] : []),
+          ...(r.recordedAt ? [{ label: 'Enregistré le', value: format(new Date(r.recordedAt), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) }] : []),
+        ],
+      }));
+
     // Single day shown — group by control type for readability.
     const byControl = new Map<string, DayEntry[]>();
-    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries]) {
+    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries]) {
       byControl.set(e.control, [...(byControl.get(e.control) ?? []), e]);
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">

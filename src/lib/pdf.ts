@@ -19,6 +19,7 @@ export type ReportFilter = {
   includeFridgeTemps?: boolean;
   includeFabrications?: boolean;
   includeCleaningChecks?: boolean;
+  includeReceptions?: boolean;
 };
 
 const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
@@ -191,6 +192,25 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
        </table>`
     : '';
 
+  const receptions = (state.receptions ?? [])
+    .filter((r) => !r.deletedAt)
+    .filter((r) => (!f.from || r.timestamp >= f.from) && (!f.to || r.timestamp <= f.to))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const receptionSection = f.includeReceptions !== false && receptions.length > 0
+    ? `<h2>Réceptions (${receptions.length})</h2>
+       <table>
+         <thead><tr><th>Date</th><th>Fournisseur</th><th>N° BL / facture</th><th>Contrôle à réception</th><th>Action corrective</th></tr></thead>
+         <tbody>${receptions.map((r) => `
+           <tr>
+             <td>${formatDate(r.timestamp)}</td>
+             <td><strong>${r.supplier}</strong></td>
+             <td>${r.reference ?? '—'}</td>
+             <td><span class="badge ${r.result === 'conforme' ? 'ok' : 'discarded'}">${r.result === 'conforme' ? 'Conforme' : 'Non conforme'}</span></td>
+             <td>${[r.backfilled ? 'Saisi a posteriori' : null, r.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"/>
     <style>
       body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 24px; color: #111827; }
@@ -230,6 +250,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ${fridgeSection}
     ${fabricationSection}
     ${cleaningSection}
+    ${receptionSection}
     </body></html>`;
 }
 

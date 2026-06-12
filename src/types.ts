@@ -198,6 +198,22 @@ export interface CleaningCheck {
   deletedAt?: number;
 }
 
+// Réceptions de la journée (registre papier) — un contrôle par livraison :
+// fournisseur, n° de BL ou de facture, résultat du contrôle à réception,
+// action corrective si besoin.
+export interface ReceptionCheck {
+  id: string;
+  timestamp: number;
+  supplier: string;
+  reference?: string;          // n° de BL ou n° de facture
+  result: 'conforme' | 'non_conforme';
+  correctiveAction?: string;   // required when non_conforme
+  backfilled?: boolean;
+  recordedAt?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CleaningTask {
   id: string;
   unitId: string;
@@ -252,6 +268,7 @@ export interface AppState {
   fabricationTypes: FabricationType[];
   cleaningChecks: CleaningCheck[];
   cleaningAreas: string[];
+  receptions: ReceptionCheck[];
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

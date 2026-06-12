@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -46,6 +46,9 @@ interface StoreActions {
   deleteCleaningCheck: (id: string) => void;
   addCleaningArea: (name: string) => void;
   deleteCleaningArea: (name: string) => void;
+  addReception: (reception: Omit<ReceptionCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateReception: (id: string, reception: Partial<Omit<ReceptionCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
+  deleteReception: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
@@ -69,6 +72,7 @@ const INITIAL_STATE: AppState = {
   fabricationTypes: [],
   cleaningChecks: [],
   cleaningAreas: ['Restaurant / Salle', 'Cuisine / Stockage', 'Locaux communs'],
+  receptions: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -409,6 +413,22 @@ export const useStore = create<AppState & StoreActions>()(
         cleaningAreas: state.cleaningAreas.filter((a) => a !== name),
       })),
 
+      // Réceptions — same lifecycle as the other register controls.
+      addReception: (reception, options) => {
+        const now = Date.now();
+        set((state) => ({
+          receptions: [...state.receptions, { ...reception, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as ReceptionCheck],
+        }));
+      },
+
+      updateReception: (id, reception) => set((state) => ({
+        receptions: state.receptions.map((r) => (r.id === id ? { ...r, ...reception, modifiedAt: Date.now() } : r)),
+      })),
+
+      deleteReception: (id) => set((state) => ({
+        receptions: state.receptions.map((r) => (r.id === id ? tomb(r) : r)),
+      })),
+
       completeCleaningTask: (taskId) => {
         const now = Date.now();
         const task = get().cleaningTasks.find((t) => t.id === taskId);
@@ -486,6 +506,7 @@ export const useStore = create<AppState & StoreActions>()(
             fabrications: mergeNewer(state.fabrications, cloud.fabrications),
             fabricationTypes: mergeNewer(state.fabricationTypes, cloud.fabricationTypes),
             cleaningChecks: mergeNewer(state.cleaningChecks, cloud.cleaningChecks),
+            receptions: mergeNewer(state.receptions, cloud.receptions),
             cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
@@ -513,6 +534,7 @@ export const useStore = create<AppState & StoreActions>()(
         fabricationTypes: state.fabricationTypes,
         cleaningChecks: state.cleaningChecks,
         cleaningAreas: state.cleaningAreas,
+        receptions: state.receptions,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
