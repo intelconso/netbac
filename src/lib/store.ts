@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, FridgeTempCheck, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -35,6 +35,12 @@ interface StoreActions {
   addFridgeTempCheck: (check: Omit<FridgeTempCheck, 'id' | 'timestamp' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
   updateFridgeTempCheck: (id: string, check: Partial<Omit<FridgeTempCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
   deleteFridgeTempCheck: (id: string) => void;
+  addFabrication: (fab: Omit<Fabrication, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateFabrication: (id: string, fab: Partial<Omit<Fabrication, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
+  deleteFabrication: (id: string) => void;
+  addFabricationType: (data: { label: string; fields: FabricationField[] }) => string;
+  updateFabricationType: (id: string, data: Partial<Pick<FabricationType, 'label' | 'fields'>>) => void;
+  removeFabricationType: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
@@ -54,6 +60,8 @@ const INITIAL_STATE: AppState = {
   cleaningTasks: [],
   oilChecks: [],
   fridgeTempChecks: [],
+  fabrications: [],
+  fabricationTypes: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -331,6 +339,41 @@ export const useStore = create<AppState & StoreActions>()(
         fridgeTempChecks: state.fridgeTempChecks.map((c) => (c.id === id ? tomb(c) : c)),
       })),
 
+      // Same lifecycle as the other register controls.
+      addFabrication: (fab, options) => {
+        const now = Date.now();
+        set((state) => ({
+          fabrications: [...state.fabrications, { ...fab, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as Fabrication],
+        }));
+      },
+
+      updateFabrication: (id, fab) => set((state) => ({
+        fabrications: state.fabrications.map((f) => (f.id === id ? { ...f, ...fab, modifiedAt: Date.now() } : f)),
+      })),
+
+      deleteFabrication: (id) => set((state) => ({
+        fabrications: state.fabrications.map((f) => (f.id === id ? tomb(f) : f)),
+      })),
+
+      // Admin-defined fabrication types (schema-driven forms). Records
+      // snapshot their labels at save time, so removing/editing a type never
+      // breaks existing fabrications — no usage check needed.
+      addFabricationType: ({ label, fields }) => {
+        const id = randomId();
+        set((state) => ({
+          fabricationTypes: [...state.fabricationTypes, { id, label: label.trim(), fields, modifiedAt: Date.now() } as FabricationType],
+        }));
+        return id;
+      },
+
+      updateFabricationType: (id, data) => set((state) => ({
+        fabricationTypes: state.fabricationTypes.map((t) => (t.id === id ? { ...t, ...data, modifiedAt: Date.now() } : t)),
+      })),
+
+      removeFabricationType: (id) => set((state) => ({
+        fabricationTypes: state.fabricationTypes.map((t) => (t.id === id ? tomb(t) : t)),
+      })),
+
       completeCleaningTask: (taskId) => {
         const now = Date.now();
         const task = get().cleaningTasks.find((t) => t.id === taskId);
@@ -405,6 +448,8 @@ export const useStore = create<AppState & StoreActions>()(
             cleaningTasks: mergeNewer(state.cleaningTasks, cloud.cleaningTasks),
             oilChecks: mergeNewer(state.oilChecks, cloud.oilChecks),
             fridgeTempChecks: mergeNewer(state.fridgeTempChecks, cloud.fridgeTempChecks),
+            fabrications: mergeNewer(state.fabrications, cloud.fabrications),
+            fabricationTypes: mergeNewer(state.fabricationTypes, cloud.fabricationTypes),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
@@ -427,6 +472,8 @@ export const useStore = create<AppState & StoreActions>()(
         cleaningTasks: state.cleaningTasks,
         oilChecks: state.oilChecks,
         fridgeTempChecks: state.fridgeTempChecks,
+        fabrications: state.fabrications,
+        fabricationTypes: state.fabricationTypes,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,

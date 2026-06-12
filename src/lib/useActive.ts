@@ -14,5 +14,7 @@ export function useActiveStore() {
   const cleaningTasks = useMemo(() => state.cleaningTasks.filter((t) => !t.deletedAt), [state.cleaningTasks]);
   const oilChecks = useMemo(() => state.oilChecks.filter((c) => !c.deletedAt), [state.oilChecks]);
   const fridgeTempChecks = useMemo(() => state.fridgeTempChecks.filter((c) => !c.deletedAt), [state.fridgeTempChecks]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks };
+  const fabrications = useMemo(() => state.fabrications.filter((f) => !f.deletedAt), [state.fabrications]);
+  const fabricationTypes = useMemo(() => state.fabricationTypes.filter((t) => !t.deletedAt), [state.fabricationTypes]);
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes };
 }

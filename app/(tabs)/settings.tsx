@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, Edit2, FileText, Tag } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Tag } from 'lucide-react-native';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useActiveStore } from '../../src/lib/useActive';
@@ -15,6 +15,7 @@ import CreateBacModal from '../../src/components/CreateBacModal';
 import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import SyncRow from '../../src/components/SyncRow';
+import FabricationTypesManager from '../../src/components/FabricationTypesManager';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function SettingsScreen() {
   const removeCustomActionType = useStore((s) => s.removeCustomActionType);
   const setDefaultActionTypeDisabled = useStore((s) => s.setDefaultActionTypeDisabled);
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'units' | 'actionTypes'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'units' | 'actionTypes' | 'fabricationTypes'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [editingUnit, setEditingUnit] = useState<{ original: string; value: string } | null>(null);
@@ -115,10 +116,11 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'units' | 'actionTypes' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'units' | 'actionTypes' | 'fabricationTypes' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
+    { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
@@ -252,6 +254,25 @@ export default function SettingsScreen() {
           })}
         </View>
       </ScrollView>
+    );
+  }
+
+  if (section === 'fabricationTypes') {
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
+        <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
+          <View className="mb-6 flex-row items-center gap-3">
+            <Pressable onPress={() => setSection('menu')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+              <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+            </Pressable>
+            <View>
+              <Text className="text-sm font-black text-gray-900 uppercase">Types de fabrication</Text>
+              <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Champs des formulaires</Text>
+            </View>
+          </View>
+          <FabricationTypesManager />
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 

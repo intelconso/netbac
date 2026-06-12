@@ -1,6 +1,7 @@
 import * as Print from 'expo-print';
 import { AppState, Product } from '../types';
 import { formatDate, getDaysRemaining } from './utils';
+import { fabricationDetails } from './fabrication';
 
 export type ReportFilter = {
   from?: number | null;        // timestamp, inclusive
@@ -16,6 +17,7 @@ export type ReportFilter = {
   includeTraceability?: boolean;
   includeOilChecks?: boolean;
   includeFridgeTemps?: boolean;
+  includeFabrications?: boolean;
 };
 
 const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
@@ -152,6 +154,24 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
        </table>`
     : '';
 
+  const fabrications = (state.fabrications ?? [])
+    .filter((c) => !c.deletedAt)
+    .filter((c) => (!f.from || c.timestamp >= f.from) && (!f.to || c.timestamp <= f.to))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const fabricationSection = f.includeFabrications !== false && fabrications.length > 0
+    ? `<h2>Fabrications du jour (${fabrications.length})</h2>
+       <table>
+         <thead><tr><th>Date</th><th>Préparation</th><th>Type</th><th>Détails</th></tr></thead>
+         <tbody>${fabrications.map((c) => `
+           <tr>
+             <td>${formatDate(c.timestamp)}</td>
+             <td><strong>${c.name}</strong></td>
+             <td>${c.typeLabel ?? 'Standard'}</td>
+             <td>${fabricationDetails(c).map((d) => `<strong>${d.label}:</strong> ${d.value}`).join(' &nbsp;•&nbsp; ') || '—'}</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"/>
     <style>
       body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 24px; color: #111827; }
@@ -189,6 +209,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ${traceability}
     ${oilSection}
     ${fridgeSection}
+    ${fabricationSection}
     </body></html>`;
 }
 

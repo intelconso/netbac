@@ -1,21 +1,38 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChevronDown, ChevronRight, Droplets, History, Thermometer } from 'lucide-react-native';
+import { ChefHat, ChevronDown, ChevronRight, Droplets, History, Thermometer } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn } from '../../src/lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import OilCheckSection from '../../src/components/controls/OilCheckSection';
 import FridgeTempSection from '../../src/components/controls/FridgeTempSection';
+import FabricationSection from '../../src/components/controls/FabricationSection';
 import { isColdUnit } from '../../src/lib/fridgeTemp';
+
+// Icône de carte qui se colore avec l'avancement du contrôle : ambre tant que
+// rien n'est fait, vert une fois complet. Entre les deux, la barre de
+// progression sous la carte montre l'avancement.
+function progressTint(progress: number): { bg: string; color: string } {
+  if (progress >= 1) return { bg: 'bg-success/10', color: '#10B981' };
+  return { bg: 'bg-alert/10', color: '#F59E0B' };
+}
+
+function ProgressBar({ progress }: { progress: number }) {
+  return (
+    <View className="h-1 bg-gray-100">
+      <View className="h-1 bg-success rounded-r-full" style={{ width: `${Math.round(progress * 100)}%` }} />
+    </View>
+  );
+}
 
 // Hub des contrôles HACCP du registre papier. Chaque page du registre devient
 // un contrôle ici : un composant src/components/controls/*Section.tsx branché
 // sur sa carte.
 export default function TracabiliteScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, storageUnits } = useActiveStore();
   const [openId, setOpenId] = useState<string | null>('oil');
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
@@ -29,6 +46,13 @@ export default function TracabiliteScreen() {
   const finDone = tempDone('fin');
   const tempComplete = coldUnits.length > 0 && debutDone === coldUnits.length && finDone === coldUnits.length;
   const tempOpen = openId === 'temp';
+
+  const fabToday = fabrications.filter((f) => f.timestamp >= startOfToday).length;
+  const fabOpen = openId === 'fab';
+
+  const oilProgress = oilDoneToday ? 1 : 0;
+  const tempProgress = coldUnits.length > 0 ? (debutDone + finDone) / (2 * coldUnits.length) : 0;
+  const oilTint = progressTint(oilProgress);
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, gap: 16 }}>
@@ -48,8 +72,8 @@ export default function TracabiliteScreen() {
 
       <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <Pressable onPress={() => setOpenId(oilOpen ? null : 'oil')} className="p-4 flex-row items-center gap-4 active:bg-gray-50">
-          <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center">
-            <Droplets size={18} color="#10B981" />
+          <View className={cn('w-10 h-10 rounded-xl items-center justify-center', oilTint.bg)}>
+            <Droplets size={18} color={oilTint.color} />
           </View>
           <View className="flex-1">
             <Text className="text-xs font-black text-gray-900 uppercase">Huiles de friture</Text>
@@ -59,6 +83,7 @@ export default function TracabiliteScreen() {
           </View>
           {oilOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
         </Pressable>
+        <ProgressBar progress={oilProgress} />
         {oilOpen && (
           <View className="p-4 pt-0 border-t border-gray-50">
             <View className="pt-4">
@@ -83,10 +108,33 @@ export default function TracabiliteScreen() {
           </View>
           {tempOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
         </Pressable>
+        <ProgressBar progress={tempProgress} />
         {tempOpen && (
           <View className="p-4 pt-0 border-t border-gray-50">
             <View className="pt-4">
               <FridgeTempSection />
+            </View>
+          </View>
+        )}
+      </View>
+
+      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <Pressable onPress={() => setOpenId(fabOpen ? null : 'fab')} className="p-4 flex-row items-center gap-4 active:bg-gray-50">
+          <View className={cn('w-10 h-10 rounded-xl items-center justify-center', fabToday > 0 ? 'bg-success/10' : 'bg-gray-100')}>
+            <ChefHat size={18} color={fabToday > 0 ? '#10B981' : '#9CA3AF'} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-xs font-black text-gray-900 uppercase">Fabrications du jour</Text>
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', fabToday > 0 ? 'text-success' : 'text-gray-400')}>
+              {fabToday > 0 ? `${fabToday} aujourd'hui` : 'Aucune aujourd’hui'}
+            </Text>
+          </View>
+          {fabOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
+        </Pressable>
+        {fabOpen && (
+          <View className="p-4 pt-0 border-t border-gray-50">
+            <View className="pt-4">
+              <FabricationSection />
             </View>
           </View>
         )}

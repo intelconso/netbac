@@ -127,6 +127,61 @@ export interface FridgeTempCheck {
   deletedAt?: number;
 }
 
+// Fabrication(s) du jour (registre papier) — une ligne par préparation.
+// Les types de fabrication sont paramétrables par l'admin : chaque type
+// définit la liste des champs du formulaire (schema-driven form).
+export type LotUsage = 'entier' | 'fractionne' | 'retravaille';
+export type FabricationDestination = 'congelateur' | 'froid_positif' | 'liaison_chaude' | 'servi' | 'emporte' | 'livre';
+
+export type FabricationFieldKind = 'text' | 'number' | 'choice' | 'multi_choice' | 'toggle';
+
+export interface FabricationField {
+  id: string;                  // stable generated key, never reused
+  label: string;               // ex. "T°C début"
+  kind: FabricationFieldKind;
+  required?: boolean;
+  options?: string[];          // for choice / multi_choice
+  unit?: string;               // display suffix, ex. "°C"
+}
+
+export interface FabricationType {
+  id: string;
+  label: string;
+  fields: FabricationField[];  // ordered — this IS the form definition
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Value snapshot: the record carries its own labels so it keeps rendering
+// in history/PDF even if the admin later edits or deletes the type.
+export interface FabricationValue {
+  fieldId: string;
+  label: string;
+  value: string | number | boolean | string[];
+}
+
+export interface Fabrication {
+  id: string;
+  timestamp: number;
+  name: string;
+  // Schema-driven records
+  typeId?: string;
+  typeLabel?: string;          // snapshot of the type label at save time
+  values?: FabricationValue[];
+  // Legacy fixed-field records (first version of the feature)
+  ingredients?: string;
+  lotUsage?: LotUsage;
+  cookingTime?: string;
+  cookingTemp?: number;
+  coolingTempStart?: number;
+  coolingTempEnd?: number;
+  destinations?: FabricationDestination[];
+  backfilled?: boolean;
+  recordedAt?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CleaningTask {
   id: string;
   unitId: string;
@@ -177,6 +232,8 @@ export interface AppState {
   cleaningTasks: CleaningTask[];
   oilChecks: OilCheck[];
   fridgeTempChecks: FridgeTempCheck[];
+  fabrications: Fabrication[];
+  fabricationTypes: FabricationType[];
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

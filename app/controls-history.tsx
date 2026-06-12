@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Droplets, Thermometer, XCircle } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, Thermometer, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
 import { targetLabel } from '../src/lib/fridgeTemp';
+import { fabricationDetails } from '../src/lib/fabrication';
 import { addMonths, endOfMonth, format, getDay, startOfDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -29,8 +30,10 @@ interface DayEntry {
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, storageUnits } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
+  // Which control group is expanded for the displayed day.
+  const [openControl, setOpenControl] = useState<string | null>(null);
 
   // One day displayed at a time — with several controls done every day, even
   // a month view grows too long; the day selector keeps the list short.
@@ -43,8 +46,8 @@ export default function ControlsHistoryScreen() {
   const dayEnd = day + DAY - 1;
 
   const earliest = useMemo(
-    () => [...oilChecks, ...fridgeTempChecks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks, fridgeTempChecks]
+    () => [...oilChecks, ...fridgeTempChecks, ...fabrications].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks, fabrications]
   );
   const canGoBack = day > startOfDay(new Date(earliest)).getTime();
   const canGoForward = day < startOfDay(new Date()).getTime();
@@ -102,14 +105,33 @@ export default function ControlsHistoryScreen() {
         };
       });
 
+    const fabEntries: DayEntry[] = fabrications
+      .filter((f) => f.timestamp >= dayStart && f.timestamp <= dayEnd)
+      .map((f) => ({
+        id: f.id,
+        control: 'Fabrications',
+        icon: ChefHat,
+        ok: true,
+        title: f.name,
+        subtitle: `${format(new Date(f.timestamp), 'HH:mm', { locale: fr })}${f.typeLabel ? ` • ${f.typeLabel}` : ''}`,
+        timestamp: f.timestamp,
+        details: [
+          { label: 'Préparation', value: f.name },
+          ...(f.typeLabel ? [{ label: 'Type', value: f.typeLabel }] : []),
+          ...fabricationDetails(f),
+          { label: 'Date', value: format(new Date(f.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+          ...(f.recordedAt ? [{ label: 'Enregistré le', value: format(new Date(f.recordedAt), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) }] : []),
+        ],
+      }));
+
     // Single day shown — group by control type for readability.
     const byControl = new Map<string, DayEntry[]>();
-    for (const e of [...entries, ...tempEntries]) {
+    for (const e of [...entries, ...tempEntries, ...fabEntries]) {
       byControl.set(e.control, [...(byControl.get(e.control) ?? []), e]);
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -213,41 +235,59 @@ export default function ControlsHistoryScreen() {
           </View>
         )}
 
-        {days.map(({ control, list }) => (
-          <View key={control} className="gap-3">
-            <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-              {control} ({list.length})
-            </Text>
-            {list.map((entry) => {
-              const Icon = entry.icon;
-              return (
-                <Pressable
-                  key={entry.id}
-                  onPress={() => setSelected(entry)}
-                  className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center gap-3 active:bg-gray-50"
-                >
-                  <View className={cn('w-10 h-10 rounded-xl items-center justify-center', entry.ok ? 'bg-success/10' : 'bg-danger/10')}>
-                    {entry.ok
-                      ? <CheckCircle2 size={18} color="#10B981" />
-                      : <XCircle size={18} color="#EF4444" />}
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-xs font-black text-gray-900 uppercase">
-                      {entry.control} — {entry.title}
-                    </Text>
-                    <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">{entry.subtitle}</Text>
-                  </View>
-                  {entry.badge && (
-                    <View className={cn('px-2 py-1 rounded-lg', entry.badgeTone === 'danger' ? 'bg-danger/10' : 'bg-primary/10')}>
-                      <Text className={cn('text-[8px] font-black uppercase tracking-widest', entry.badgeTone === 'danger' ? 'text-danger' : 'text-primary')}>{entry.badge}</Text>
-                    </View>
-                  )}
-                  <ChevronRight size={16} color="#D1D5DB" />
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+        {days.map(({ control, list }) => {
+          const GroupIcon = list[0].icon;
+          const issues = list.filter((e) => !e.ok).length;
+          const open = openControl === control;
+          return (
+            <View key={control} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+              <Pressable
+                onPress={() => setOpenControl(open ? null : control)}
+                className="p-4 flex-row items-center gap-4 active:bg-gray-50"
+              >
+                <View className={cn('w-10 h-10 rounded-xl items-center justify-center', issues > 0 ? 'bg-danger/10' : 'bg-gray-100')}>
+                  <GroupIcon size={18} color={issues > 0 ? '#EF4444' : '#6B7280'} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-black text-gray-900 uppercase">{control}</Text>
+                  <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', issues > 0 ? 'text-danger' : 'text-gray-400')}>
+                    {list.length} enregistrement{list.length > 1 ? 's' : ''}
+                    {issues > 0 ? ` • ${issues} hors plage` : ''}
+                  </Text>
+                </View>
+                {open ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
+              </Pressable>
+
+              {open && (
+                <View className="border-t border-gray-50 p-3 gap-2">
+                  {list.map((entry) => (
+                    <Pressable
+                      key={entry.id}
+                      onPress={() => setSelected(entry)}
+                      className="bg-gray-50 p-3 rounded-xl flex-row items-center gap-3 active:bg-gray-100"
+                    >
+                      <View className={cn('w-8 h-8 rounded-lg items-center justify-center', entry.ok ? 'bg-gray-100' : 'bg-danger/10')}>
+                        {entry.ok
+                          ? <CheckCircle2 size={15} color="#9CA3AF" />
+                          : <XCircle size={15} color="#EF4444" />}
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-xs font-black text-gray-900 uppercase">{entry.title}</Text>
+                        <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">{entry.subtitle}</Text>
+                      </View>
+                      {entry.badge && (
+                        <View className={cn('px-2 py-1 rounded-lg', entry.badgeTone === 'danger' ? 'bg-danger/10' : 'bg-primary/10')}>
+                          <Text className={cn('text-[8px] font-black uppercase tracking-widest', entry.badgeTone === 'danger' ? 'text-danger' : 'text-primary')}>{entry.badge}</Text>
+                        </View>
+                      )}
+                      <ChevronRight size={14} color="#D1D5DB" />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
       </ScrollView>
 
       <Modal visible={!!selected} transparent animationType="fade" onRequestClose={() => setSelected(null)}>
