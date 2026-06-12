@@ -12,5 +12,6 @@ export function useActiveStore() {
   const bacs = useMemo(() => state.bacs.filter((b) => !b.deletedAt), [state.bacs]);
   const products = useMemo(() => state.products.filter((p) => !p.deletedAt), [state.products]);
   const cleaningTasks = useMemo(() => state.cleaningTasks.filter((t) => !t.deletedAt), [state.cleaningTasks]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks };
+  const oilChecks = useMemo(() => state.oilChecks.filter((c) => !c.deletedAt), [state.oilChecks]);
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks };
 }

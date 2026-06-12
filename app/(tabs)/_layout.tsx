@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Tabs } from 'expo-router';
-import { LayoutGrid, Settings, ShieldCheck, Tag } from 'lucide-react-native';
+import { ClipboardCheck, LayoutGrid, Settings, ShieldCheck, Tag } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../../src/lib/store';
 import { useSession } from '../../src/lib/useSession';
@@ -68,6 +68,13 @@ export default function TabsLayout() {
           options={{
             title: 'Étiquettes',
             tabBarIcon: ({ color }) => <Tag size={20} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="tracabilite"
+          options={{
+            title: 'Traçabilité',
+            tabBarIcon: ({ color }) => <ClipboardCheck size={20} color={color} />,
           }}
         />
         <Tabs.Screen

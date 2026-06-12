@@ -78,6 +78,26 @@ export interface TemperatureLog {
   status: 'ok' | 'alert';
 }
 
+// Contrôle des huiles de friture — one global daily check (paper HACCP
+// register page "Contrôles des huiles de friture"). When the oil is changed,
+// the used oil must legally be collected by an approved organization; the
+// pickup itself is just noted in `notes`.
+export interface OilCheck {
+  id: string;
+  timestamp: number;
+  result: 'conforme' | 'non_conforme';
+  oilChanged: boolean;
+  operatorId: string;
+  operatorName: string;
+  notes?: string;
+  // Entered after the fact for a missed day: `timestamp` sits on the day the
+  // control covers, `modifiedAt` is the real entry time. Flagged for audit
+  // transparency in history and PDF reports.
+  backfilled?: boolean;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CleaningTask {
   id: string;
   unitId: string;
@@ -126,6 +146,7 @@ export interface AppState {
   products: Product[];
   tempLogs: TemperatureLog[];
   cleaningTasks: CleaningTask[];
+  oilChecks: OilCheck[];
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

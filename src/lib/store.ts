@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -29,6 +29,9 @@ interface StoreActions {
   removeCustomActionType: (id: string) => { ok: boolean; error?: string };
   setDefaultActionTypeDisabled: (id: ActionType, disabled: boolean) => void;
   addTempLog: (log: Omit<TemperatureLog, 'id' | 'timestamp'>) => void;
+  addOilCheck: (check: Omit<OilCheck, 'id' | 'timestamp' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateOilCheck: (id: string, check: Partial<Omit<OilCheck, 'id' | 'timestamp' | 'modifiedAt'>>) => void;
+  deleteOilCheck: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
@@ -46,6 +49,7 @@ const INITIAL_STATE: AppState = {
   products: [],
   tempLogs: [],
   cleaningTasks: [],
+  oilChecks: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -287,6 +291,25 @@ export const useStore = create<AppState & StoreActions>()(
         set((state) => ({ tempLogs: [...state.tempLogs, { ...log, id, timestamp } as TemperatureLog] }));
       },
 
+      // options.timestamp allows backfilling a missed day — the check lands on
+      // that day while modifiedAt keeps the real entry time.
+      addOilCheck: (check, options) => {
+        const now = Date.now();
+        set((state) => ({
+          oilChecks: [...state.oilChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, modifiedAt: now } as OilCheck],
+        }));
+      },
+
+      // Corrections only — the check's original timestamp is preserved so it
+      // stays on its day; modifiedAt is bumped so the merge propagates the edit.
+      updateOilCheck: (id, check) => set((state) => ({
+        oilChecks: state.oilChecks.map((c) => (c.id === id ? { ...c, ...check, modifiedAt: Date.now() } : c)),
+      })),
+
+      deleteOilCheck: (id) => set((state) => ({
+        oilChecks: state.oilChecks.map((c) => (c.id === id ? tomb(c) : c)),
+      })),
+
       completeCleaningTask: (taskId) => {
         const now = Date.now();
         const task = get().cleaningTasks.find((t) => t.id === taskId);
@@ -359,6 +382,7 @@ export const useStore = create<AppState & StoreActions>()(
             products: mergeNewer(state.products, cloud.products),
             tempLogs: mergeAppendOnly(state.tempLogs, cloud.tempLogs),
             cleaningTasks: mergeNewer(state.cleaningTasks, cloud.cleaningTasks),
+            oilChecks: mergeNewer(state.oilChecks, cloud.oilChecks),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
@@ -379,6 +403,7 @@ export const useStore = create<AppState & StoreActions>()(
         products: state.products,
         tempLogs: state.tempLogs,
         cleaningTasks: state.cleaningTasks,
+        oilChecks: state.oilChecks,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,

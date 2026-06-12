@@ -109,6 +109,7 @@ function RootInner() {
             <Stack.Screen name="express-add" />
             <Stack.Screen name="journal" />
             <Stack.Screen name="history" />
+            <Stack.Screen name="controls-history" />
             <Stack.Screen name="reports" />
             <Stack.Screen name="camera" />
           </Stack>
