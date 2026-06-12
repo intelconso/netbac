@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, Thermometer, XCircle } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, Sparkles, Thermometer, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
@@ -30,7 +30,7 @@ interface DayEntry {
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, storageUnits } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
   // Which control group is expanded for the displayed day.
   const [openControl, setOpenControl] = useState<string | null>(null);
@@ -46,8 +46,8 @@ export default function ControlsHistoryScreen() {
   const dayEnd = day + DAY - 1;
 
   const earliest = useMemo(
-    () => [...oilChecks, ...fridgeTempChecks, ...fabrications].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks, fridgeTempChecks, fabrications]
+    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks]
   );
   const canGoBack = day > startOfDay(new Date(earliest)).getTime();
   const canGoForward = day < startOfDay(new Date()).getTime();
@@ -124,14 +124,35 @@ export default function ControlsHistoryScreen() {
         ],
       }));
 
+    const cleaningEntries: DayEntry[] = cleaningChecks
+      .filter((c) => c.timestamp >= dayStart && c.timestamp <= dayEnd)
+      .map((c) => ({
+        id: c.id,
+        control: 'Nettoyage',
+        icon: Sparkles,
+        ok: c.result === 'conforme',
+        title: c.area,
+        subtitle: `${c.result === 'conforme' ? 'Conforme' : 'Non conforme'} • ${format(new Date(c.timestamp), 'HH:mm', { locale: fr })}`,
+        timestamp: c.timestamp,
+        ...(c.result === 'non_conforme' ? { badge: 'Non conforme', badgeTone: 'danger' as const } : {}),
+        details: [
+          { label: 'Zone', value: c.area },
+          { label: 'Résultat', value: c.result === 'conforme' ? 'Conforme' : 'Non conforme' },
+          ...(c.correctiveAction ? [{ label: 'Action corrective', value: c.correctiveAction }] : []),
+          { label: 'Date', value: format(new Date(c.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+          ...(c.backfilled ? [{ label: 'Saisie', value: 'A posteriori (jour complété plus tard)' }] : []),
+          ...(c.recordedAt ? [{ label: 'Enregistré le', value: format(new Date(c.recordedAt), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) }] : []),
+        ],
+      }));
+
     // Single day shown — group by control type for readability.
     const byControl = new Map<string, DayEntry[]>();
-    for (const e of [...entries, ...tempEntries, ...fabEntries]) {
+    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries]) {
       byControl.set(e.control, [...(byControl.get(e.control) ?? []), e]);
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, fabrications, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">

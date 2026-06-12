@@ -182,6 +182,22 @@ export interface Fabrication {
   deletedAt?: number;
 }
 
+// Contrôles nettoyage (registre papier) — un contrôle quotidien par zone de
+// nettoyage (Restaurant/Salle, Cuisine/Stockage, ...). Les zones sont une
+// liste paramétrable (AppState.cleaningAreas) ; le record snapshotte le
+// libellé de la zone, donc renommer/supprimer une zone ne casse rien.
+export interface CleaningCheck {
+  id: string;
+  area: string;                 // label snapshot of the cleaning zone
+  timestamp: number;
+  result: 'conforme' | 'non_conforme';
+  correctiveAction?: string;    // required when non_conforme
+  backfilled?: boolean;
+  recordedAt?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CleaningTask {
   id: string;
   unitId: string;
@@ -234,6 +250,8 @@ export interface AppState {
   fridgeTempChecks: FridgeTempCheck[];
   fabrications: Fabrication[];
   fabricationTypes: FabricationType[];
+  cleaningChecks: CleaningCheck[];
+  cleaningAreas: string[];
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

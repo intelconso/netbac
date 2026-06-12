@@ -18,6 +18,7 @@ export type ReportFilter = {
   includeOilChecks?: boolean;
   includeFridgeTemps?: boolean;
   includeFabrications?: boolean;
+  includeCleaningChecks?: boolean;
 };
 
 const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
@@ -172,6 +173,24 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
        </table>`
     : '';
 
+  const cleaningChecks = (state.cleaningChecks ?? [])
+    .filter((c) => !c.deletedAt)
+    .filter((c) => (!f.from || c.timestamp >= f.from) && (!f.to || c.timestamp <= f.to))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const cleaningSection = f.includeCleaningChecks !== false && cleaningChecks.length > 0
+    ? `<h2>Contrôles nettoyage (${cleaningChecks.length})</h2>
+       <table>
+         <thead><tr><th>Date</th><th>Zone</th><th>Résultat</th><th>Action corrective</th></tr></thead>
+         <tbody>${cleaningChecks.map((c) => `
+           <tr>
+             <td>${formatDate(c.timestamp)}</td>
+             <td>${c.area}</td>
+             <td><span class="badge ${c.result === 'conforme' ? 'ok' : 'discarded'}">${c.result === 'conforme' ? 'Conforme' : 'Non conforme'}</span></td>
+             <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"/>
     <style>
       body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 24px; color: #111827; }
@@ -210,6 +229,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ${oilSection}
     ${fridgeSection}
     ${fabricationSection}
+    ${cleaningSection}
     </body></html>`;
 }
 

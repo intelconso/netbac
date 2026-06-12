@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Tag } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag } from 'lucide-react-native';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useActiveStore } from '../../src/lib/useActive';
@@ -26,6 +26,7 @@ export default function SettingsScreen() {
     addShelf, deleteShelf, setUnitShelves,
     addBac, deleteBac,
     productUnits, addProductUnit, updateProductUnit, deleteProductUnit,
+    cleaningAreas, addCleaningArea, deleteCleaningArea,
   } = useActiveStore();
   // Direct selectors — useActiveStore destructure doesn't always re-render on
   // these new fields in Zustand 5; selectors guarantee a fresh subscription.
@@ -35,9 +36,10 @@ export default function SettingsScreen() {
   const removeCustomActionType = useStore((s) => s.removeCustomActionType);
   const setDefaultActionTypeDisabled = useStore((s) => s.setDefaultActionTypeDisabled);
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
+  const [newCleaningArea, setNewCleaningArea] = useState('');
   const [editingUnit, setEditingUnit] = useState<{ original: string; value: string } | null>(null);
   const [newActionLabel, setNewActionLabel] = useState('');
   const [newActionDays, setNewActionDays] = useState('3');
@@ -56,7 +58,7 @@ export default function SettingsScreen() {
           setDrillDown({});
           return true;
         }
-        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes') {
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas') {
           setSection('custom');
           return true;
         }
@@ -126,10 +128,11 @@ export default function SettingsScreen() {
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
-  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
+    { id: 'cleaningAreas', label: 'Zones de nettoyage', description: 'Zones du contrôle nettoyage quotidien', icon: Sparkles },
   ];
 
   if (section === 'menu') {
@@ -215,6 +218,59 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
+        </View>
+      </ScrollView>
+    );
+  }
+
+  if (section === 'cleaningAreas') {
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24 }}>
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Zones de nettoyage</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Contrôle nettoyage quotidien</Text>
+          </View>
+        </View>
+
+        <View className="bg-white rounded-2xl border border-gray-100 flex-row items-center gap-2 p-2 mb-4">
+          <TextInput
+            value={newCleaningArea}
+            onChangeText={setNewCleaningArea}
+            placeholder="ex: Terrasse, Sanitaires..."
+            className="flex-1 px-3 py-2 text-sm font-bold text-gray-900"
+            onSubmitEditing={() => { if (newCleaningArea.trim()) { addCleaningArea(newCleaningArea); setNewCleaningArea(''); } }}
+            returnKeyType="done"
+          />
+          <Pressable
+            onPress={() => { if (newCleaningArea.trim()) { addCleaningArea(newCleaningArea); setNewCleaningArea(''); } }}
+            disabled={!newCleaningArea.trim()}
+            className={cn('w-10 h-10 rounded-xl items-center justify-center', newCleaningArea.trim() ? 'bg-primary' : 'bg-gray-100')}
+          >
+            <Plus size={18} color={newCleaningArea.trim() ? '#fff' : '#9CA3AF'} />
+          </Pressable>
+        </View>
+
+        <View className="gap-2">
+          {cleaningAreas.map((area) => (
+            <View key={area} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-3">
+              <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center">
+                <Sparkles size={18} color="#10B981" />
+              </View>
+              <Text className="flex-1 text-sm font-black text-gray-900 uppercase">{area}</Text>
+              <Pressable onPress={() => deleteCleaningArea(area)} className="w-9 h-9 rounded-xl bg-red-50 items-center justify-center">
+                <Trash2 size={14} color="#EF4444" />
+              </Pressable>
+            </View>
+          ))}
+          {cleaningAreas.length === 0 && (
+            <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Aucune zone — ajoutez-en une</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
     );

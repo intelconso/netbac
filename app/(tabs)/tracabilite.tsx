@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChefHat, ChevronDown, ChevronRight, Droplets, History, Thermometer } from 'lucide-react-native';
+import { ChefHat, ChevronDown, ChevronRight, Droplets, History, Sparkles, Thermometer } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn } from '../../src/lib/utils';
 import { format } from 'date-fns';
@@ -9,6 +9,7 @@ import { fr } from 'date-fns/locale';
 import OilCheckSection from '../../src/components/controls/OilCheckSection';
 import FridgeTempSection from '../../src/components/controls/FridgeTempSection';
 import FabricationSection from '../../src/components/controls/FabricationSection';
+import CleaningCheckSection from '../../src/components/controls/CleaningCheckSection';
 import { isColdUnit } from '../../src/lib/fridgeTemp';
 
 // Icône de carte qui se colore avec l'avancement du contrôle : ambre tant que
@@ -32,7 +33,7 @@ function ProgressBar({ progress }: { progress: number }) {
 // sur sa carte.
 export default function TracabiliteScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, storageUnits } = useActiveStore();
   const [openId, setOpenId] = useState<string | null>('oil');
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
@@ -49,6 +50,13 @@ export default function TracabiliteScreen() {
 
   const fabToday = fabrications.filter((f) => f.timestamp >= startOfToday).length;
   const fabOpen = openId === 'fab';
+
+  const cleaningDone = cleaningAreas.filter((a) =>
+    cleaningChecks.some((c) => c.area === a && c.timestamp >= startOfToday)
+  ).length;
+  const cleaningProgress = cleaningAreas.length > 0 ? cleaningDone / cleaningAreas.length : 0;
+  const cleaningOpen = openId === 'cleaning';
+  const cleaningTint = progressTint(cleaningProgress);
 
   const oilProgress = oilDoneToday ? 1 : 0;
   const tempProgress = coldUnits.length > 0 ? (debutDone + finDone) / (2 * coldUnits.length) : 0;
@@ -113,6 +121,29 @@ export default function TracabiliteScreen() {
           <View className="p-4 pt-0 border-t border-gray-50">
             <View className="pt-4">
               <FridgeTempSection />
+            </View>
+          </View>
+        )}
+      </View>
+
+      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <Pressable onPress={() => setOpenId(cleaningOpen ? null : 'cleaning')} className="p-4 flex-row items-center gap-4 active:bg-gray-50">
+          <View className={cn('w-10 h-10 rounded-xl items-center justify-center', cleaningTint.bg)}>
+            <Sparkles size={18} color={cleaningTint.color} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-xs font-black text-gray-900 uppercase">Contrôles nettoyage</Text>
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', cleaningProgress >= 1 ? 'text-success' : 'text-alert')}>
+              {cleaningDone}/{cleaningAreas.length} zone{cleaningAreas.length > 1 ? 's' : ''} contrôlée{cleaningDone > 1 ? 's' : ''}
+            </Text>
+          </View>
+          {cleaningOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
+        </Pressable>
+        <ProgressBar progress={cleaningProgress} />
+        {cleaningOpen && (
+          <View className="p-4 pt-0 border-t border-gray-50">
+            <View className="pt-4">
+              <CleaningCheckSection />
             </View>
           </View>
         )}

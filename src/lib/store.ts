@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -41,6 +41,11 @@ interface StoreActions {
   addFabricationType: (data: { label: string; fields: FabricationField[] }) => string;
   updateFabricationType: (id: string, data: Partial<Pick<FabricationType, 'label' | 'fields'>>) => void;
   removeFabricationType: (id: string) => void;
+  addCleaningCheck: (check: Omit<CleaningCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateCleaningCheck: (id: string, check: Partial<Omit<CleaningCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
+  deleteCleaningCheck: (id: string) => void;
+  addCleaningArea: (name: string) => void;
+  deleteCleaningArea: (name: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
@@ -62,6 +67,8 @@ const INITIAL_STATE: AppState = {
   fridgeTempChecks: [],
   fabrications: [],
   fabricationTypes: [],
+  cleaningChecks: [],
+  cleaningAreas: ['Restaurant / Salle', 'Cuisine / Stockage', 'Locaux communs'],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -374,6 +381,34 @@ export const useStore = create<AppState & StoreActions>()(
         fabricationTypes: state.fabricationTypes.map((t) => (t.id === id ? tomb(t) : t)),
       })),
 
+      // Contrôles nettoyage — same lifecycle as the other register controls.
+      addCleaningCheck: (check, options) => {
+        const now = Date.now();
+        set((state) => ({
+          cleaningChecks: [...state.cleaningChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as CleaningCheck],
+        }));
+      },
+
+      updateCleaningCheck: (id, check) => set((state) => ({
+        cleaningChecks: state.cleaningChecks.map((c) => (c.id === id ? { ...c, ...check, modifiedAt: Date.now() } : c)),
+      })),
+
+      deleteCleaningCheck: (id) => set((state) => ({
+        cleaningChecks: state.cleaningChecks.map((c) => (c.id === id ? tomb(c) : c)),
+      })),
+
+      // Cleaning zones are a plain label list like productUnits — records
+      // snapshot the label, so removing a zone never breaks history.
+      addCleaningArea: (name) => set((state) => {
+        const trimmed = name.trim();
+        if (!trimmed || state.cleaningAreas.includes(trimmed)) return {};
+        return { cleaningAreas: [...state.cleaningAreas, trimmed] };
+      }),
+
+      deleteCleaningArea: (name) => set((state) => ({
+        cleaningAreas: state.cleaningAreas.filter((a) => a !== name),
+      })),
+
       completeCleaningTask: (taskId) => {
         const now = Date.now();
         const task = get().cleaningTasks.find((t) => t.id === taskId);
@@ -450,6 +485,8 @@ export const useStore = create<AppState & StoreActions>()(
             fridgeTempChecks: mergeNewer(state.fridgeTempChecks, cloud.fridgeTempChecks),
             fabrications: mergeNewer(state.fabrications, cloud.fabrications),
             fabricationTypes: mergeNewer(state.fabricationTypes, cloud.fabricationTypes),
+            cleaningChecks: mergeNewer(state.cleaningChecks, cloud.cleaningChecks),
+            cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
@@ -474,6 +511,8 @@ export const useStore = create<AppState & StoreActions>()(
         fridgeTempChecks: state.fridgeTempChecks,
         fabrications: state.fabrications,
         fabricationTypes: state.fabricationTypes,
+        cleaningChecks: state.cleaningChecks,
+        cleaningAreas: state.cleaningAreas,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
