@@ -220,6 +220,35 @@ export interface ReceptionCheck {
   deletedAt?: number;
 }
 
+// Enregistrement des remarques de la journée (registre papier) — notes libres :
+// dysfonctionnement, réclamation client, envoi d'analyses, visite de contrôle,
+// début de nouvelles mises en place...
+export interface DailyRemark {
+  id: string;
+  timestamp: number;
+  text: string;
+  // Contrôleur — see OilCheck.operatorName.
+  operatorName?: string;
+  backfilled?: boolean;
+  recordedAt?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Prélèvement des plats témoins (restauration collective uniquement) —
+// un oui/non par jour.
+export interface WitnessSample {
+  id: string;
+  timestamp: number;
+  taken: boolean;
+  // Contrôleur — see OilCheck.operatorName.
+  operatorName?: string;
+  backfilled?: boolean;
+  recordedAt?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CleaningTask {
   id: string;
   unitId: string;
@@ -275,6 +304,8 @@ export interface AppState {
   cleaningChecks: CleaningCheck[];
   cleaningAreas: string[];
   receptions: ReceptionCheck[];
+  dailyRemarks: DailyRemark[];
+  witnessSamples: WitnessSample[];
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

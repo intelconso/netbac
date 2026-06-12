@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -49,6 +49,12 @@ interface StoreActions {
   addReception: (reception: Omit<ReceptionCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
   updateReception: (id: string, reception: Partial<Omit<ReceptionCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
   deleteReception: (id: string) => void;
+  addDailyRemark: (remark: Omit<DailyRemark, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateDailyRemark: (id: string, remark: Partial<Omit<DailyRemark, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
+  deleteDailyRemark: (id: string) => void;
+  addWitnessSample: (sample: Omit<WitnessSample, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateWitnessSample: (id: string, sample: Partial<Omit<WitnessSample, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
+  deleteWitnessSample: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
@@ -73,6 +79,8 @@ const INITIAL_STATE: AppState = {
   cleaningChecks: [],
   cleaningAreas: ['Restaurant / Salle', 'Cuisine / Stockage', 'Locaux communs'],
   receptions: [],
+  dailyRemarks: [],
+  witnessSamples: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -429,6 +437,38 @@ export const useStore = create<AppState & StoreActions>()(
         receptions: state.receptions.map((r) => (r.id === id ? tomb(r) : r)),
       })),
 
+      // Remarques de la journée & plats témoins — same lifecycle as the
+      // other register controls.
+      addDailyRemark: (remark, options) => {
+        const now = Date.now();
+        set((state) => ({
+          dailyRemarks: [...state.dailyRemarks, { ...remark, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as DailyRemark],
+        }));
+      },
+
+      updateDailyRemark: (id, remark) => set((state) => ({
+        dailyRemarks: state.dailyRemarks.map((r) => (r.id === id ? { ...r, ...remark, modifiedAt: Date.now() } : r)),
+      })),
+
+      deleteDailyRemark: (id) => set((state) => ({
+        dailyRemarks: state.dailyRemarks.map((r) => (r.id === id ? tomb(r) : r)),
+      })),
+
+      addWitnessSample: (sample, options) => {
+        const now = Date.now();
+        set((state) => ({
+          witnessSamples: [...state.witnessSamples, { ...sample, id: randomId(), timestamp: options?.timestamp ?? now, recordedAt: now, modifiedAt: now } as WitnessSample],
+        }));
+      },
+
+      updateWitnessSample: (id, sample) => set((state) => ({
+        witnessSamples: state.witnessSamples.map((s) => (s.id === id ? { ...s, ...sample, modifiedAt: Date.now() } : s)),
+      })),
+
+      deleteWitnessSample: (id) => set((state) => ({
+        witnessSamples: state.witnessSamples.map((s) => (s.id === id ? tomb(s) : s)),
+      })),
+
       completeCleaningTask: (taskId) => {
         const now = Date.now();
         const task = get().cleaningTasks.find((t) => t.id === taskId);
@@ -507,6 +547,8 @@ export const useStore = create<AppState & StoreActions>()(
             fabricationTypes: mergeNewer(state.fabricationTypes, cloud.fabricationTypes),
             cleaningChecks: mergeNewer(state.cleaningChecks, cloud.cleaningChecks),
             receptions: mergeNewer(state.receptions, cloud.receptions),
+            dailyRemarks: mergeNewer(state.dailyRemarks, cloud.dailyRemarks),
+            witnessSamples: mergeNewer(state.witnessSamples, cloud.witnessSamples),
             cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
@@ -535,6 +577,8 @@ export const useStore = create<AppState & StoreActions>()(
         cleaningChecks: state.cleaningChecks,
         cleaningAreas: state.cleaningAreas,
         receptions: state.receptions,
+        dailyRemarks: state.dailyRemarks,
+        witnessSamples: state.witnessSamples,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,

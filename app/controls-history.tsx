@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, MessageSquare, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
@@ -30,7 +30,7 @@ interface DayEntry {
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, storageUnits } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
   // Which control group is expanded for the displayed day.
   const [openControl, setOpenControl] = useState<string | null>(null);
@@ -46,8 +46,8 @@ export default function ControlsHistoryScreen() {
   const dayEnd = day + DAY - 1;
 
   const earliest = useMemo(
-    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions]
+    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions, ...dailyRemarks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks]
   );
   const canGoBack = day > startOfDay(new Date(earliest)).getTime();
   const canGoForward = day < startOfDay(new Date()).getTime();
@@ -172,14 +172,33 @@ export default function ControlsHistoryScreen() {
         ],
       }));
 
+    const remarkEntries: DayEntry[] = dailyRemarks
+      .filter((r) => r.timestamp >= dayStart && r.timestamp <= dayEnd)
+      .map((r) => ({
+        id: r.id,
+        control: 'Remarques',
+        icon: MessageSquare,
+        ok: true,
+        title: r.text.length > 40 ? `${r.text.slice(0, 40)}…` : r.text,
+        subtitle: `${format(new Date(r.timestamp), 'HH:mm', { locale: fr })}${r.operatorName ? ` • ${r.operatorName}` : ''}`,
+        timestamp: r.timestamp,
+        details: [
+          { label: 'Remarque', value: r.text },
+          ...(r.operatorName ? [{ label: 'Contrôleur', value: r.operatorName }] : []),
+          { label: 'Date', value: format(new Date(r.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+          ...(r.recordedAt ? [{ label: 'Enregistré le', value: format(new Date(r.recordedAt), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) }] : []),
+        ],
+      }));
+
     // Single day shown — group by control type for readability.
+    // (Plats témoins masqué pour l'instant — restauration collective only.)
     const byControl = new Map<string, DayEntry[]>();
-    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries]) {
+    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries, ...remarkEntries]) {
       byControl.set(e.control, [...(byControl.get(e.control) ?? []), e]);
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">

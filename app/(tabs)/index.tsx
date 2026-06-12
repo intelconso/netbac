@@ -1,15 +1,16 @@
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Scan, Plus, AlertTriangle, FileText, Eye } from 'lucide-react-native';
+import { Scan, Plus, AlertTriangle, ClipboardCheck, FileText, Eye } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
+import { isColdUnit } from '../../src/lib/fridgeTemp';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { products, user } = useActiveStore();
+  const { products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
 
@@ -25,6 +26,27 @@ export default function HomeScreen() {
     startOfToday.setHours(0, 0, 0, 0);
     return activeProducts.filter((p) => p.addedAt >= startOfToday.getTime()).length;
   }, [activeProducts]);
+
+  // Daily mandatory controls still to do (oils, fridge temps, cleaning) —
+  // drives the Traçabilité card next to À surveiller / Étiquetage.
+  const pendingControls = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const t0 = startOfToday.getTime();
+    let pending = 0;
+    if (!oilChecks.some((c) => c.timestamp >= t0)) pending += 1;
+    const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
+    const tempToday = fridgeTempChecks.filter((c) => c.timestamp >= t0);
+    const tempComplete = coldUnits.length > 0 && (['debut', 'fin'] as const).every((svc) =>
+      coldUnits.every((u) => tempToday.some((c) => c.unitId === u.id && c.service === svc))
+    );
+    if (coldUnits.length > 0 && !tempComplete) pending += 1;
+    const cleaningComplete = cleaningAreas.length > 0 && cleaningAreas.every((a) =>
+      cleaningChecks.some((c) => c.area === a && c.timestamp >= t0)
+    );
+    if (cleaningAreas.length > 0 && !cleaningComplete) pending += 1;
+    return pending;
+  }, [oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits]);
 
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
@@ -68,6 +90,31 @@ export default function HomeScreen() {
             <Text className="text-[9px] font-bold text-white/70 uppercase tracking-widest mt-0.5">Traçabilité instantanée</Text>
           </View>
           <Scan size={44} color="rgba(255,255,255,0.18)" />
+        </View>
+      </Pressable>
+
+      {/* Traçabilité — daily HACCP controls */}
+      <Pressable
+        onPress={() => router.push('/(tabs)/tracabilite' as any)}
+        className={cn('p-5 rounded-3xl', pendingControls === 0 && 'border border-gray-100')}
+        style={{ backgroundColor: pendingControls > 0 ? '#F59E0B' : '#FFFFFF' }}
+      >
+        <View className="flex-row items-center gap-4">
+          <View
+            className="w-12 h-12 rounded-2xl items-center justify-center"
+            style={{ backgroundColor: pendingControls > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(16,185,129,0.1)' }}
+          >
+            <ClipboardCheck size={26} color={pendingControls > 0 ? '#fff' : '#10B981'} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-base font-black uppercase" style={{ color: pendingControls > 0 ? '#fff' : '#111827' }}>Traçabilité</Text>
+            <Text className="text-[9px] font-bold uppercase tracking-widest mt-0.5" style={{ color: pendingControls > 0 ? 'rgba(255,255,255,0.7)' : '#10B981' }}>
+              {pendingControls > 0
+                ? `${pendingControls} contrôle${pendingControls > 1 ? 's' : ''} du jour à faire`
+                : 'Contrôles du jour effectués'}
+            </Text>
+          </View>
+          {pendingControls > 0 && <Text className="text-3xl font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{pendingControls}</Text>}
         </View>
       </Pressable>
 
@@ -118,6 +165,7 @@ export default function HomeScreen() {
           </View>
         </Pressable>
       </View>
+
     </ScrollView>
   );
 }

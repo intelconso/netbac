@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChefHat, ChevronDown, ChevronRight, Droplets, History, Sparkles, Thermometer, Truck } from 'lucide-react-native';
+import { ChefHat, ChevronDown, ChevronRight, Droplets, History, MessageSquare, Sparkles, Thermometer, Truck } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn } from '../../src/lib/utils';
 import { format } from 'date-fns';
@@ -11,6 +11,7 @@ import FridgeTempSection from '../../src/components/controls/FridgeTempSection';
 import FabricationSection from '../../src/components/controls/FabricationSection';
 import CleaningCheckSection from '../../src/components/controls/CleaningCheckSection';
 import ReceptionSection from '../../src/components/controls/ReceptionSection';
+import DailyRemarkSection from '../../src/components/controls/DailyRemarkSection';
 import { isColdUnit } from '../../src/lib/fridgeTemp';
 
 // Icône de carte qui se colore avec l'avancement du contrôle : ambre tant que
@@ -34,7 +35,7 @@ function ProgressBar({ progress }: { progress: number }) {
 // sur sa carte.
 export default function TracabiliteScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, storageUnits } = useActiveStore();
   const [openId, setOpenId] = useState<string | null>('oil');
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
@@ -55,6 +56,9 @@ export default function TracabiliteScreen() {
   const recToday = receptions.filter((r) => r.timestamp >= startOfToday);
   const recIssues = recToday.filter((r) => r.result === 'non_conforme').length;
   const recOpen = openId === 'rec';
+
+  const remarksToday = dailyRemarks.filter((r) => r.timestamp >= startOfToday).length;
+  const remarksOpen = openId === 'remarks';
 
   const cleaningDone = cleaningAreas.filter((a) =>
     cleaningChecks.some((c) => c.area === a && c.timestamp >= startOfToday)
@@ -199,6 +203,32 @@ export default function TracabiliteScreen() {
           </View>
         )}
       </View>
+
+      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <Pressable onPress={() => setOpenId(remarksOpen ? null : 'remarks')} className="p-4 flex-row items-center gap-4 active:bg-gray-50">
+          <View className={cn('w-10 h-10 rounded-xl items-center justify-center', remarksToday > 0 ? 'bg-success/10' : 'bg-gray-100')}>
+            <MessageSquare size={18} color={remarksToday > 0 ? '#10B981' : '#9CA3AF'} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-xs font-black text-gray-900 uppercase">Remarques du jour</Text>
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', remarksToday > 0 ? 'text-success' : 'text-gray-400')}>
+              {remarksToday > 0 ? `${remarksToday} aujourd'hui` : 'Aucune aujourd’hui'}
+            </Text>
+          </View>
+          {remarksOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
+        </Pressable>
+        {remarksOpen && (
+          <View className="p-4 pt-0 border-t border-gray-50">
+            <View className="pt-4">
+              <DailyRemarkSection />
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Plats témoins (restauration collective uniquement) : masqué pour
+          l'instant — WitnessSampleSection et sa couche données restent prêts
+          à être rebranchés ici. */}
 
     </ScrollView>
   );

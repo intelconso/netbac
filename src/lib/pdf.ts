@@ -20,6 +20,7 @@ export type ReportFilter = {
   includeFabrications?: boolean;
   includeCleaningChecks?: boolean;
   includeReceptions?: boolean;
+  includeRemarks?: boolean;
 };
 
 const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
@@ -216,6 +217,25 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
        </table>`
     : '';
 
+  const remarks = (state.dailyRemarks ?? [])
+    .filter((r) => !r.deletedAt)
+    .filter((r) => (!f.from || r.timestamp >= f.from) && (!f.to || r.timestamp <= f.to))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  // Plats témoins (witnessSamples) intentionally left out for now —
+  // restauration collective only, hidden from the UI.
+  const remarksSection = f.includeRemarks !== false && remarks.length > 0
+    ? `<h2>Remarques de la journée (${remarks.length})</h2>
+       <table>
+         <thead><tr><th>Date</th><th>Remarque</th><th>Contrôleur</th></tr></thead>
+         <tbody>${remarks.map((r) => `
+           <tr>
+             <td>${formatDate(r.timestamp)}</td>
+             <td>${r.text}</td>
+             <td>${r.operatorName ?? '—'}</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"/>
     <style>
       body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 24px; color: #111827; }
@@ -256,6 +276,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ${fabricationSection}
     ${cleaningSection}
     ${receptionSection}
+    ${remarksSection}
     </body></html>`;
 }
 
