@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { ReceptionCheck } from '../../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { lastControllerName } from '../../lib/controller';
 
 const DAY = 86400000;
 
@@ -14,10 +15,12 @@ const DAY = 86400000;
 // corrective exigée en cas d'écart). Pas de notion de jour manqué : il n'y a
 // pas forcément de livraison chaque jour.
 export default function ReceptionSection() {
-  const { receptions, addReception, updateReception } = useActiveStore();
+  const store = useActiveStore();
+  const { receptions, addReception, updateReception } = store;
 
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [controller, setController] = useState('');
   const [supplier, setSupplier] = useState('');
   const [reference, setReference] = useState('');
   const [result, setResult] = useState<'conforme' | 'non_conforme'>('conforme');
@@ -40,8 +43,14 @@ export default function ReceptionSection() {
     setCorrectiveAction('');
   };
 
+  const openForm = () => {
+    setController(lastControllerName(store));
+    setIsAdding(true);
+  };
+
   const startEdit = (r: ReceptionCheck) => {
     setEditingId(r.id);
+    setController(r.operatorName ?? lastControllerName(store));
     setSupplier(r.supplier);
     setReference(r.reference ?? '');
     setResult(r.result);
@@ -49,13 +58,14 @@ export default function ReceptionSection() {
     setIsAdding(true);
   };
 
-  const canSave = supplier.trim().length > 0 && (result === 'conforme' || correctiveAction.trim().length > 0);
+  const canSave = supplier.trim().length > 0 && controller.trim().length > 0 && (result === 'conforme' || correctiveAction.trim().length > 0);
 
   const handleSave = () => {
     if (!canSave) return;
     const data = {
       supplier: supplier.trim(),
       result,
+      operatorName: controller.trim(),
       ...(reference.trim() ? { reference: reference.trim() } : {}),
       ...(result === 'non_conforme' ? { correctiveAction: correctiveAction.trim() } : {}),
     };
@@ -67,7 +77,7 @@ export default function ReceptionSection() {
   return (
     <View className="gap-4">
       {!isAdding && (
-        <Pressable onPress={() => setIsAdding(true)} className="py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2">
+        <Pressable onPress={openForm} className="py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2">
           <Plus size={14} color="#fff" />
           <Text className="text-[10px] font-black text-white uppercase">Nouvelle réception</Text>
         </Pressable>
@@ -117,6 +127,11 @@ export default function ReceptionSection() {
               />
             </View>
           )}
+
+          <View className="gap-2">
+            <Text className="text-[9px] font-bold text-gray-400 uppercase">Contrôleur</Text>
+            <TextInput value={controller} onChangeText={setController} placeholder="Nom du contrôleur" className="p-3 bg-gray-50 rounded-xl text-sm font-bold" />
+          </View>
 
           <View className="flex-row gap-2">
             <Pressable onPress={closeForm} className="flex-1 py-3"><Text className="text-[10px] font-black text-gray-400 uppercase text-center">Annuler</Text></Pressable>

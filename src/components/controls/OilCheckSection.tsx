@@ -3,6 +3,7 @@ import { View, Text, Pressable, TextInput } from 'react-native';
 import { AlertCircle, CheckCircle2, Droplets, Pencil, XCircle } from 'lucide-react-native';
 import { useActiveStore } from '../../lib/useActive';
 import { cn, formatDate } from '../../lib/utils';
+import { lastControllerName } from '../../lib/controller';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -12,8 +13,10 @@ import { fr } from 'date-fns/locale';
 // `embedded`: rendered inside a card that already shows the title and the
 // done/to-do status, so the header row and status banners are skipped.
 export default function OilCheckSection({ embedded = false }: { embedded?: boolean }) {
-  const { oilChecks, addOilCheck, updateOilCheck } = useActiveStore();
+  const store = useActiveStore();
+  const { oilChecks, addOilCheck, updateOilCheck } = store;
   const [isAdding, setIsAdding] = useState(false);
+  const [controller, setController] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   // Start-of-day timestamp of the missed day being backfilled, null otherwise.
   const [backfillDay, setBackfillDay] = useState<number | null>(null);
@@ -50,9 +53,11 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
   };
 
   const handleSave = () => {
+    if (!controller.trim()) return;
     const data = {
       result,
       oilChanged,
+      operatorName: controller.trim(),
       ...(notes.trim() ? { notes: notes.trim() } : {}),
     };
     if (editingId) {
@@ -77,6 +82,12 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
     setResult(check.result);
     setOilChanged(check.oilChanged);
     setNotes(check.notes ?? '');
+    setController(check.operatorName ?? lastControllerName(store));
+    setIsAdding(true);
+  };
+
+  const openForm = () => {
+    setController(lastControllerName(store));
     setIsAdding(true);
   };
 
@@ -102,7 +113,7 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
       )}
 
       {!checkedToday && !isAdding && (
-        <Pressable onPress={() => setIsAdding(true)} className="py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2">
+        <Pressable onPress={openForm} className="py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2">
           <Droplets size={14} color="#fff" />
           <Text className="text-[10px] font-black text-white uppercase">Contrôler maintenant</Text>
         </Pressable>
@@ -156,9 +167,16 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
             placeholder="Notes (optionnel)" value={notes} onChangeText={setNotes}
             className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
           />
+          <View className="gap-2">
+            <Text className="text-[9px] font-bold text-gray-400 uppercase">Contrôleur</Text>
+            <TextInput
+              placeholder="Nom du contrôleur" value={controller} onChangeText={setController}
+              className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
+            />
+          </View>
           <View className="flex-row gap-2">
             <Pressable onPress={closeForm} className="flex-1 py-3"><Text className="text-[10px] font-black text-gray-400 uppercase text-center">Annuler</Text></Pressable>
-            <Pressable onPress={handleSave} className="flex-1 py-3 bg-primary rounded-xl"><Text className="text-[10px] font-black uppercase text-center text-white">{editingId ? 'Modifier' : 'Enregistrer'}</Text></Pressable>
+            <Pressable disabled={!controller.trim()} onPress={handleSave} className={cn('flex-1 py-3 bg-primary rounded-xl', !controller.trim() && 'opacity-40')}><Text className="text-[10px] font-black uppercase text-center text-white">{editingId ? 'Modifier' : 'Enregistrer'}</Text></Pressable>
           </View>
         </View>
       )}

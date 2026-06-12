@@ -4,6 +4,7 @@ import { CheckCircle2, Pencil, Thermometer, XCircle } from 'lucide-react-native'
 import { useActiveStore } from '../../lib/useActive';
 import { cn } from '../../lib/utils';
 import { isColdUnit, isTempConform, targetLabel } from '../../lib/fridgeTemp';
+import { lastControllerName } from '../../lib/controller';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -17,10 +18,14 @@ const SERVICES = [
 // et par enceinte (début / fin de service). Conformité dérivée de la plage
 // réglementaire du type d'enceinte ; action corrective exigée en cas d'écart.
 export default function FridgeTempSection() {
-  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck } = useActiveStore();
+  const store = useActiveStore();
+  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck } = store;
   const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
 
   const [service, setService] = useState<'debut' | 'fin'>('debut');
+  // Shared across all readings saved in this session — prefilled with the
+  // last controller name used anywhere in the register.
+  const [controller, setController] = useState(() => lastControllerName(store));
   const [backfillDay, setBackfillDay] = useState<number | null>(null);
   // Drafts keyed by unitId — temperature text and corrective action text.
   const [temps, setTemps] = useState<Record<string, string>>({});
@@ -61,18 +66,20 @@ export default function FridgeTempSection() {
     setEditingUnitId(unitId);
     setTemp(unitId, String(existing.temperature));
     setAction(unitId, existing.correctiveAction ?? '');
+    if (existing.operatorName) setController(existing.operatorName);
   };
 
   const saveUnit = (unitId: string) => {
     const unit = coldUnits.find((u) => u.id === unitId);
     const temp = parseTemp(temps[unitId] ?? '');
-    if (!unit || temp === null) return;
+    if (!unit || temp === null || !controller.trim()) return;
     const conform = isTempConform(unit.type, temp);
     const correctiveAction = (actions[unitId] ?? '').trim();
     if (!conform && !correctiveAction) return; // action corrective requise
     const data = {
       temperature: temp,
       conform,
+      operatorName: controller.trim(),
       ...(correctiveAction ? { correctiveAction } : {}),
     };
     const existing = checksFor(unitId, service);
@@ -117,6 +124,16 @@ export default function FridgeTempSection() {
           </Pressable>
         </View>
       )}
+
+      <View className="gap-2">
+        <Text className="text-[9px] font-bold text-gray-400 uppercase">Contrôleur</Text>
+        <TextInput
+          value={controller}
+          onChangeText={setController}
+          placeholder="Nom du contrôleur"
+          className="p-3 bg-white border border-gray-100 rounded-xl text-sm font-bold"
+        />
+      </View>
 
       <View className="flex-row p-1 bg-gray-100 rounded-2xl">
         {SERVICES.map((s) => (
@@ -182,9 +199,9 @@ export default function FridgeTempSection() {
                 />
                 <Text className="text-xs font-black text-gray-400">°C</Text>
                 <Pressable
-                  disabled={parsed === null || (draftConform === false && !(actions[unit.id] ?? '').trim())}
+                  disabled={parsed === null || !controller.trim() || (draftConform === false && !(actions[unit.id] ?? '').trim())}
                   onPress={() => saveUnit(unit.id)}
-                  className={cn('px-4 py-3 bg-primary rounded-xl', (parsed === null || (draftConform === false && !(actions[unit.id] ?? '').trim())) && 'opacity-40')}
+                  className={cn('px-4 py-3 bg-primary rounded-xl', (parsed === null || !controller.trim() || (draftConform === false && !(actions[unit.id] ?? '').trim())) && 'opacity-40')}
                 >
                   <Text className="text-[10px] font-black text-white uppercase">{editing ? 'Modifier' : 'OK'}</Text>
                 </Pressable>

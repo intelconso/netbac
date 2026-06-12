@@ -5,6 +5,7 @@ import { useActiveStore } from '../../lib/useActive';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { lastControllerName } from '../../lib/controller';
 
 const DAY = 86400000;
 
@@ -12,8 +13,10 @@ const DAY = 86400000;
 // s'enregistre en un geste ; "Non conforme" exige l'action corrective
 // (colonne "Actions correctives si besoin" du registre papier).
 export default function CleaningCheckSection() {
-  const { cleaningAreas, cleaningChecks, addCleaningCheck, updateCleaningCheck } = useActiveStore();
+  const store = useActiveStore();
+  const { cleaningAreas, cleaningChecks, addCleaningCheck, updateCleaningCheck } = store;
 
+  const [controller, setController] = useState(() => lastControllerName(store));
   const [backfillDay, setBackfillDay] = useState<number | null>(null);
   // Zone whose "non conforme" corrective-action input is open, and its draft.
   const [ncArea, setNcArea] = useState<string | null>(null);
@@ -43,7 +46,8 @@ export default function CleaningCheckSection() {
   };
 
   const save = (area: string, result: 'conforme' | 'non_conforme', correctiveAction?: string) => {
-    const data = { result, ...(correctiveAction ? { correctiveAction } : {}) };
+    if (!controller.trim()) return;
+    const data = { result, operatorName: controller.trim(), ...(correctiveAction ? { correctiveAction } : {}) };
     const existing = checkFor(area);
     if (existing) {
       updateCleaningCheck(existing.id, { ...data, ...(correctiveAction ? {} : { correctiveAction: undefined }) });
@@ -69,6 +73,16 @@ export default function CleaningCheckSection() {
         </View>
       )}
 
+      <View className="gap-2">
+        <Text className="text-[9px] font-bold text-gray-400 uppercase">Contrôleur</Text>
+        <TextInput
+          value={controller}
+          onChangeText={setController}
+          placeholder="Nom du contrôleur"
+          className="p-3 bg-white border border-gray-100 rounded-xl text-sm font-bold"
+        />
+      </View>
+
       <View className="gap-3">
         {cleaningAreas.map((area) => {
           const existing = checkFor(area);
@@ -92,7 +106,7 @@ export default function CleaningCheckSection() {
                     </Text>
                   </View>
                 </View>
-                <Pressable onPress={() => { setEditingArea(area); setNcArea(null); setNcDraft(existing.correctiveAction ?? ''); }} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
+                <Pressable onPress={() => { setEditingArea(area); setNcArea(null); setNcDraft(existing.correctiveAction ?? ''); if (existing.operatorName) setController(existing.operatorName); }} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
                   <Pencil size={14} color="#9CA3AF" />
                 </Pressable>
               </View>
@@ -103,7 +117,11 @@ export default function CleaningCheckSection() {
             <View key={area} className="bg-white p-4 rounded-2xl border border-gray-100 gap-3">
               <Text className="text-xs font-black text-gray-900 uppercase">{area}</Text>
               <View className="flex-row gap-2">
-                <Pressable onPress={() => save(area, 'conforme')} className="flex-1 py-3 rounded-xl border bg-success/10 border-success items-center">
+                <Pressable
+                  disabled={!controller.trim()}
+                  onPress={() => save(area, 'conforme')}
+                  className={cn('flex-1 py-3 rounded-xl border bg-success/10 border-success items-center', !controller.trim() && 'opacity-40')}
+                >
                   <Text className="text-[10px] font-black uppercase text-success">Conforme</Text>
                 </Pressable>
                 <Pressable
@@ -123,9 +141,9 @@ export default function CleaningCheckSection() {
                     className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
                   />
                   <Pressable
-                    disabled={!ncDraft.trim()}
+                    disabled={!ncDraft.trim() || !controller.trim()}
                     onPress={() => save(area, 'non_conforme', ncDraft.trim())}
-                    className={cn('py-3 bg-danger rounded-xl items-center', !ncDraft.trim() && 'opacity-40')}
+                    className={cn('py-3 bg-danger rounded-xl items-center', (!ncDraft.trim() || !controller.trim()) && 'opacity-40')}
                   >
                     <Text className="text-[10px] font-black text-white uppercase">Enregistrer non conforme</Text>
                   </Pressable>

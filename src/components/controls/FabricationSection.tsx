@@ -4,6 +4,7 @@ import { ChefHat, CheckCircle2, Pencil, Plus } from 'lucide-react-native';
 import { useActiveStore } from '../../lib/useActive';
 import { cn } from '../../lib/utils';
 import { fabricationDetails, getAvailableFabricationTypes } from '../../lib/fabrication';
+import { lastControllerName } from '../../lib/controller';
 import { Fabrication, FabricationField, FabricationValue } from '../../types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -26,6 +27,7 @@ export default function FabricationSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [typeId, setTypeId] = useState(types[0].id);
   const [name, setName] = useState('');
+  const [controller, setController] = useState('');
   const [draft, setDraft] = useState<Draft>({});
 
   const type = types.find((t) => t.id === typeId) ?? types[0];
@@ -50,9 +52,15 @@ export default function FabricationSection() {
     setDraft({});
   };
 
+  const openForm = () => {
+    setController(lastControllerName(store));
+    setIsAdding(true);
+  };
+
   const startEdit = (fab: Fabrication) => {
     setEditingId(fab.id);
     setName(fab.name);
+    setController(fab.operatorName ?? lastControllerName(store));
     if (fab.typeId && types.some((t) => t.id === fab.typeId)) setTypeId(fab.typeId);
     const d: Draft = {};
     for (const v of fab.values ?? []) {
@@ -71,7 +79,7 @@ export default function FabricationSection() {
     return typeof v === 'string' && v.trim().length > 0;
   };
 
-  const canSave = name.trim().length > 0 && type.fields.every((f) => !f.required || fieldFilled(f));
+  const canSave = name.trim().length > 0 && controller.trim().length > 0 && type.fields.every((f) => !f.required || fieldFilled(f));
 
   const handleSave = () => {
     if (!canSave) return;
@@ -85,7 +93,7 @@ export default function FabricationSection() {
       else if (f.kind === 'toggle') values.push({ fieldId: f.id, label, value: raw === true });
       else values.push({ fieldId: f.id, label, value: (raw as string).trim() });
     }
-    const data = { name: name.trim(), typeId: type.id, typeLabel: type.label, values };
+    const data = { name: name.trim(), typeId: type.id, typeLabel: type.label, operatorName: controller.trim(), values };
     if (editingId) updateFabrication(editingId, data);
     else addFabrication(data);
     closeForm();
@@ -156,7 +164,7 @@ export default function FabricationSection() {
   return (
     <View className="gap-4">
       {!isAdding && (
-        <Pressable onPress={() => setIsAdding(true)} className="py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2">
+        <Pressable onPress={openForm} className="py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2">
           <Plus size={14} color="#fff" />
           <Text className="text-[10px] font-black text-white uppercase">Nouvelle fabrication</Text>
         </Pressable>
@@ -194,6 +202,11 @@ export default function FabricationSection() {
               {renderField(f)}
             </View>
           ))}
+
+          <View className="gap-2">
+            <Text className="text-[9px] font-bold text-gray-400 uppercase">Contrôleur</Text>
+            <TextInput value={controller} onChangeText={setController} placeholder="Nom du contrôleur" className="p-3 bg-gray-50 rounded-xl text-sm font-bold" />
+          </View>
 
           <View className="flex-row gap-2">
             <Pressable onPress={closeForm} className="flex-1 py-3"><Text className="text-[10px] font-black text-gray-400 uppercase text-center">Annuler</Text></Pressable>

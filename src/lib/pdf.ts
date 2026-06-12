@@ -125,12 +125,13 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const oilSection = f.includeOilChecks !== false && oilChecks.length > 0
     ? `<h2>Contrôles des huiles de friture (${oilChecks.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Résultat</th><th>Huile changée</th><th>Notes</th></tr></thead>
+         <thead><tr><th>Date</th><th>Résultat</th><th>Huile changée</th><th>Contrôleur</th><th>Notes</th></tr></thead>
          <tbody>${oilChecks.map((c) => `
            <tr>
              <td>${formatDate(c.timestamp)}</td>
              <td><span class="badge ${c.result === 'conforme' ? 'ok' : 'discarded'}">${c.result === 'conforme' ? 'Conforme' : 'Non conforme'}</span></td>
              <td>${c.oilChanged ? 'Oui — récupération organisme agréé' : '—'}</td>
+             <td>${c.operatorName ?? '—'}</td>
              <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.notes].filter(Boolean).join(' — ')}</td>
            </tr>`).join('')}</tbody>
        </table>`
@@ -143,7 +144,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const fridgeSection = f.includeFridgeTemps !== false && fridgeTemps.length > 0
     ? `<h2>Relevés des températures frigorifiques (${fridgeTemps.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Service</th><th>Enceinte</th><th>T°C</th><th>Conformité</th><th>Action corrective</th></tr></thead>
+         <thead><tr><th>Date</th><th>Service</th><th>Enceinte</th><th>T°C</th><th>Conformité</th><th>Action corrective</th><th>Contrôleur</th></tr></thead>
          <tbody>${fridgeTemps.map((c) => `
            <tr>
              <td>${formatDate(c.timestamp)}</td>
@@ -152,6 +153,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
              <td>${c.temperature}°C</td>
              <td><span class="badge ${c.conform ? 'ok' : 'discarded'}">${c.conform ? 'Conforme' : 'Non conforme'}</span></td>
              <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
+             <td>${c.operatorName ?? '—'}</td>
            </tr>`).join('')}</tbody>
        </table>`
     : '';
@@ -163,13 +165,14 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const fabricationSection = f.includeFabrications !== false && fabrications.length > 0
     ? `<h2>Fabrications du jour (${fabrications.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Préparation</th><th>Type</th><th>Détails</th></tr></thead>
+         <thead><tr><th>Date</th><th>Préparation</th><th>Type</th><th>Détails</th><th>Contrôleur</th></tr></thead>
          <tbody>${fabrications.map((c) => `
            <tr>
              <td>${formatDate(c.timestamp)}</td>
              <td><strong>${c.name}</strong></td>
              <td>${c.typeLabel ?? 'Standard'}</td>
              <td>${fabricationDetails(c).map((d) => `<strong>${d.label}:</strong> ${d.value}`).join(' &nbsp;•&nbsp; ') || '—'}</td>
+             <td>${c.operatorName ?? '—'}</td>
            </tr>`).join('')}</tbody>
        </table>`
     : '';
@@ -181,13 +184,14 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const cleaningSection = f.includeCleaningChecks !== false && cleaningChecks.length > 0
     ? `<h2>Contrôles nettoyage (${cleaningChecks.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Zone</th><th>Résultat</th><th>Action corrective</th></tr></thead>
+         <thead><tr><th>Date</th><th>Zone</th><th>Résultat</th><th>Action corrective</th><th>Contrôleur</th></tr></thead>
          <tbody>${cleaningChecks.map((c) => `
            <tr>
              <td>${formatDate(c.timestamp)}</td>
              <td>${c.area}</td>
              <td><span class="badge ${c.result === 'conforme' ? 'ok' : 'discarded'}">${c.result === 'conforme' ? 'Conforme' : 'Non conforme'}</span></td>
              <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
+             <td>${c.operatorName ?? '—'}</td>
            </tr>`).join('')}</tbody>
        </table>`
     : '';
@@ -199,7 +203,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
   const receptionSection = f.includeReceptions !== false && receptions.length > 0
     ? `<h2>Réceptions (${receptions.length})</h2>
        <table>
-         <thead><tr><th>Date</th><th>Fournisseur</th><th>N° BL / facture</th><th>Contrôle à réception</th><th>Action corrective</th></tr></thead>
+         <thead><tr><th>Date</th><th>Fournisseur</th><th>N° BL / facture</th><th>Contrôle à réception</th><th>Action corrective</th><th>Contrôleur</th></tr></thead>
          <tbody>${receptions.map((r) => `
            <tr>
              <td>${formatDate(r.timestamp)}</td>
@@ -207,6 +211,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
              <td>${r.reference ?? '—'}</td>
              <td><span class="badge ${r.result === 'conforme' ? 'ok' : 'discarded'}">${r.result === 'conforme' ? 'Conforme' : 'Non conforme'}</span></td>
              <td>${[r.backfilled ? 'Saisi a posteriori' : null, r.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
+             <td>${r.operatorName ?? '—'}</td>
            </tr>`).join('')}</tbody>
        </table>`
     : '';

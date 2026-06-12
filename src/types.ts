@@ -87,9 +87,9 @@ export interface OilCheck {
   timestamp: number;
   result: 'conforme' | 'non_conforme';
   oilChanged: boolean;
-  // Legacy — the app has a single role, operator is no longer recorded.
-  // Kept optional so records written by older versions still parse.
   operatorId?: string;
+  // Contrôleur — mirrors the register's "Signature du contrôleur" column.
+  // Optional so records from versions that didn't capture it still parse.
   operatorName?: string;
   notes?: string;
   // Entered after the fact for a missed day: `timestamp` sits on the day the
@@ -116,8 +116,8 @@ export interface FridgeTempCheck {
   temperature: number;
   conform: boolean;
   correctiveAction?: string;
-  // Legacy — see OilCheck: single-role app, no longer recorded.
   operatorId?: string;
+  // Contrôleur — see OilCheck.operatorName.
   operatorName?: string;
   // Entered after the fact for a missed day — see OilCheck.backfilled.
   backfilled?: boolean;
@@ -168,6 +168,8 @@ export interface Fabrication {
   typeId?: string;
   typeLabel?: string;          // snapshot of the type label at save time
   values?: FabricationValue[];
+  // Contrôleur — see OilCheck.operatorName.
+  operatorName?: string;
   // Legacy fixed-field records (first version of the feature)
   ingredients?: string;
   lotUsage?: LotUsage;
@@ -192,6 +194,8 @@ export interface CleaningCheck {
   timestamp: number;
   result: 'conforme' | 'non_conforme';
   correctiveAction?: string;    // required when non_conforme
+  // Contrôleur — see OilCheck.operatorName.
+  operatorName?: string;
   backfilled?: boolean;
   recordedAt?: number;
   modifiedAt: number;
@@ -208,6 +212,8 @@ export interface ReceptionCheck {
   reference?: string;          // n° de BL ou n° de facture
   result: 'conforme' | 'non_conforme';
   correctiveAction?: string;   // required when non_conforme
+  // Contrôleur — see OilCheck.operatorName.
+  operatorName?: string;
   backfilled?: boolean;
   recordedAt?: number;
   modifiedAt: number;
