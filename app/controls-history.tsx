@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Droplets, XCircle } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Droplets, Thermometer, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
@@ -20,15 +20,16 @@ interface DayEntry {
   title: string;
   subtitle: string;
   timestamp: number;
-  // Optional pill shown on the card (e.g. "huile changée").
+  // Optional pill shown on the card (e.g. "huile changée", "hors plage").
   badge?: string;
+  badgeTone?: 'primary' | 'danger';
   // Rows shown in the detail modal when the card is tapped.
   details: { label: string; value: string }[];
 }
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, storageUnits } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
 
   // One month displayed at a time — the paper register is kept monthly, and
@@ -38,8 +39,8 @@ export default function ControlsHistoryScreen() {
   const monthEnd = endOfMonth(month).getTime();
 
   const earliest = useMemo(
-    () => oilChecks.reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks]
+    () => [...oilChecks, ...fridgeTempChecks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks]
   );
   const canGoBack = monthStart > startOfMonth(new Date(earliest)).getTime();
   const canGoForward = monthStart < startOfMonth(new Date()).getTime();
@@ -66,15 +67,42 @@ export default function ControlsHistoryScreen() {
         ],
       }));
 
+    const tempEntries: DayEntry[] = fridgeTempChecks
+      .filter((c) => c.timestamp >= monthStart && c.timestamp <= monthEnd)
+      .map((c) => {
+        const unitName = storageUnits.find((u) => u.id === c.unitId)?.name ?? 'Enceinte';
+        const serviceLabel = c.service === 'debut' ? 'Début de service' : 'Fin de service';
+        return {
+          id: c.id,
+          control: 'Températures',
+          icon: Thermometer,
+          ok: c.conform,
+          title: `${unitName} • ${c.temperature}°C`,
+          subtitle: `${serviceLabel} • ${format(new Date(c.timestamp), 'HH:mm', { locale: fr })} • ${c.operatorName}`,
+          timestamp: c.timestamp,
+          ...(c.conform ? {} : { badge: 'Hors plage', badgeTone: 'danger' as const }),
+          details: [
+            { label: 'Enceinte', value: unitName },
+            { label: 'Température', value: `${c.temperature}°C` },
+            { label: 'Conformité', value: c.conform ? 'Conforme' : 'Non conforme (hors plage réglementaire)' },
+            { label: 'Service', value: serviceLabel },
+            { label: 'Contrôleur', value: c.operatorName },
+            { label: 'Date', value: format(new Date(c.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+            ...(c.correctiveAction ? [{ label: 'Action corrective', value: c.correctiveAction }] : []),
+            ...(c.backfilled ? [{ label: 'Saisie', value: 'A posteriori (jour complété plus tard)' }] : []),
+          ],
+        };
+      });
+
     const byDay = new Map<number, DayEntry[]>();
-    for (const e of entries) {
+    for (const e of [...entries, ...tempEntries]) {
       const day = startOfDay(new Date(e.timestamp)).getTime();
       byDay.set(day, [...(byDay.get(day) ?? []), e]);
     }
     return [...byDay.entries()]
       .sort(([a], [b]) => b - a)
       .map(([day, list]) => ({ day, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, monthStart, monthEnd]);
+  }, [oilChecks, fridgeTempChecks, storageUnits, monthStart, monthEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -138,8 +166,8 @@ export default function ControlsHistoryScreen() {
                     <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">{entry.subtitle}</Text>
                   </View>
                   {entry.badge && (
-                    <View className="px-2 py-1 rounded-lg bg-primary/10">
-                      <Text className="text-[8px] font-black text-primary uppercase tracking-widest">{entry.badge}</Text>
+                    <View className={cn('px-2 py-1 rounded-lg', entry.badgeTone === 'danger' ? 'bg-danger/10' : 'bg-primary/10')}>
+                      <Text className={cn('text-[8px] font-black uppercase tracking-widest', entry.badgeTone === 'danger' ? 'text-danger' : 'text-primary')}>{entry.badge}</Text>
                     </View>
                   )}
                   <ChevronRight size={16} color="#D1D5DB" />

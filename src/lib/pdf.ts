@@ -15,6 +15,7 @@ export type ReportFilter = {
   includeSummary?: boolean;
   includeTraceability?: boolean;
   includeOilChecks?: boolean;
+  includeFridgeTemps?: boolean;
 };
 
 const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
@@ -132,6 +133,27 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
        </table>`
     : '';
 
+  const fridgeTemps = (state.fridgeTempChecks ?? [])
+    .filter((c) => !c.deletedAt)
+    .filter((c) => (!f.from || c.timestamp >= f.from) && (!f.to || c.timestamp <= f.to))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const fridgeSection = f.includeFridgeTemps !== false && fridgeTemps.length > 0
+    ? `<h2>Relevés des températures frigorifiques (${fridgeTemps.length})</h2>
+       <table>
+         <thead><tr><th>Date</th><th>Service</th><th>Enceinte</th><th>T°C</th><th>Conformité</th><th>Action corrective</th><th>Contrôleur</th></tr></thead>
+         <tbody>${fridgeTemps.map((c) => `
+           <tr>
+             <td>${formatDate(c.timestamp)}</td>
+             <td>${c.service === 'debut' ? 'Début' : 'Fin'}</td>
+             <td>${state.storageUnits.find((u) => u.id === c.unitId)?.name ?? '—'}</td>
+             <td>${c.temperature}°C</td>
+             <td><span class="badge ${c.conform ? 'ok' : 'discarded'}">${c.conform ? 'Conforme' : 'Non conforme'}</span></td>
+             <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.correctiveAction].filter(Boolean).join(' — ') || '—'}</td>
+             <td>${c.operatorName}</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"/>
     <style>
       body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 24px; color: #111827; }
@@ -168,6 +190,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ${summary}
     ${traceability}
     ${oilSection}
+    ${fridgeSection}
     </body></html>`;
 }
 

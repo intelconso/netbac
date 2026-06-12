@@ -98,6 +98,27 @@ export interface OilCheck {
   deletedAt?: number;
 }
 
+// Relevé des températures des enceintes frigorifiques (registre papier,
+// arrêté du 21 décembre 2009 annexe 1) — deux relevés par jour et par
+// enceinte : début et fin de service. `conform` is derived from the unit's
+// regulatory target at save time and stored as the audit snapshot;
+// `correctiveAction` is required when non-conform.
+export interface FridgeTempCheck {
+  id: string;
+  unitId: string;
+  service: 'debut' | 'fin';
+  timestamp: number;
+  temperature: number;
+  conform: boolean;
+  correctiveAction?: string;
+  operatorId: string;
+  operatorName: string;
+  // Entered after the fact for a missed day — see OilCheck.backfilled.
+  backfilled?: boolean;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CleaningTask {
   id: string;
   unitId: string;
@@ -147,6 +168,7 @@ export interface AppState {
   tempLogs: TemperatureLog[];
   cleaningTasks: CleaningTask[];
   oilChecks: OilCheck[];
+  fridgeTempChecks: FridgeTempCheck[];
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

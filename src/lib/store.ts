@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CustomActionType, DefaultActionTypeState, FridgeTempCheck, OilCheck, Product, User, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 
 interface StoreActions {
@@ -32,6 +32,9 @@ interface StoreActions {
   addOilCheck: (check: Omit<OilCheck, 'id' | 'timestamp' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
   updateOilCheck: (id: string, check: Partial<Omit<OilCheck, 'id' | 'timestamp' | 'modifiedAt'>>) => void;
   deleteOilCheck: (id: string) => void;
+  addFridgeTempCheck: (check: Omit<FridgeTempCheck, 'id' | 'timestamp' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
+  updateFridgeTempCheck: (id: string, check: Partial<Omit<FridgeTempCheck, 'id' | 'timestamp' | 'modifiedAt'>>) => void;
+  deleteFridgeTempCheck: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
@@ -50,6 +53,7 @@ const INITIAL_STATE: AppState = {
   tempLogs: [],
   cleaningTasks: [],
   oilChecks: [],
+  fridgeTempChecks: [],
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -310,6 +314,23 @@ export const useStore = create<AppState & StoreActions>()(
         oilChecks: state.oilChecks.map((c) => (c.id === id ? tomb(c) : c)),
       })),
 
+      // Same shape as the oil check actions: options.timestamp backfills a
+      // missed day, updates preserve the reading's timestamp.
+      addFridgeTempCheck: (check, options) => {
+        const now = Date.now();
+        set((state) => ({
+          fridgeTempChecks: [...state.fridgeTempChecks, { ...check, id: randomId(), timestamp: options?.timestamp ?? now, modifiedAt: now } as FridgeTempCheck],
+        }));
+      },
+
+      updateFridgeTempCheck: (id, check) => set((state) => ({
+        fridgeTempChecks: state.fridgeTempChecks.map((c) => (c.id === id ? { ...c, ...check, modifiedAt: Date.now() } : c)),
+      })),
+
+      deleteFridgeTempCheck: (id) => set((state) => ({
+        fridgeTempChecks: state.fridgeTempChecks.map((c) => (c.id === id ? tomb(c) : c)),
+      })),
+
       completeCleaningTask: (taskId) => {
         const now = Date.now();
         const task = get().cleaningTasks.find((t) => t.id === taskId);
@@ -383,6 +404,7 @@ export const useStore = create<AppState & StoreActions>()(
             tempLogs: mergeAppendOnly(state.tempLogs, cloud.tempLogs),
             cleaningTasks: mergeNewer(state.cleaningTasks, cloud.cleaningTasks),
             oilChecks: mergeNewer(state.oilChecks, cloud.oilChecks),
+            fridgeTempChecks: mergeNewer(state.fridgeTempChecks, cloud.fridgeTempChecks),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
@@ -404,6 +426,7 @@ export const useStore = create<AppState & StoreActions>()(
         tempLogs: state.tempLogs,
         cleaningTasks: state.cleaningTasks,
         oilChecks: state.oilChecks,
+        fridgeTempChecks: state.fridgeTempChecks,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
