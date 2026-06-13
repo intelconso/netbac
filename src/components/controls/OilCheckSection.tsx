@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Droplets, Pencil, XCircle } from 'lucide-rea
 import { useActiveStore } from '../../lib/useActive';
 import { cn, formatDate } from '../../lib/utils';
 import { lastControllerName } from '../../lib/controller';
+import { isClosedDay } from '../../lib/serviceDays';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -14,7 +15,10 @@ import { fr } from 'date-fns/locale';
 // done/to-do status, so the header row and status banners are skipped.
 export default function OilCheckSection({ embedded = false }: { embedded?: boolean }) {
   const store = useActiveStore();
-  const { oilChecks, addOilCheck, updateOilCheck } = store;
+  const { oilChecks, addOilCheck, updateOilCheck, closedWeekdays, singleServiceWeekdays, dayOverrides } = store;
+  // Seuls les jours fermés sont neutralisés ici (le service unique attend le
+  // contrôle des huiles comme un jour ouvert).
+  const schedule = { closedWeekdays, singleServiceWeekdays, dayOverrides };
   const [isAdding, setIsAdding] = useState(false);
   const [controller, setController] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -39,6 +43,7 @@ export default function OilCheckSection({ embedded = false }: { embedded?: boole
   for (let i = 1; i <= 7; i++) {
     const day = startOfToday - i * DAY;
     if (day + DAY <= firstCheckAt) break;
+    if (isClosedDay(day, schedule)) continue; // service fermé — pas un manque
     const covered = oilChecks.some((c) => c.timestamp >= day && c.timestamp < day + DAY);
     if (!covered) missedDays.push(day);
   }

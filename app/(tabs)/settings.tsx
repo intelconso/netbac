@@ -1,7 +1,9 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, ChevronLeft, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays } from 'lucide-react-native';
+import { format, startOfMonth, endOfMonth, getDay, addMonths } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { signOut } from '../../src/lib/firebase';
 import { signOutGoogle } from '../../src/lib/googleSignIn';
 import { useActiveStore } from '../../src/lib/useActive';
@@ -16,6 +18,8 @@ import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import SyncRow from '../../src/components/SyncRow';
 import FabricationTypesManager from '../../src/components/FabricationTypesManager';
+import { WEEKDAYS, STATUS_LABELS, startOfDayMs } from '../../src/lib/serviceDays';
+import { DayServiceStatus } from '../../src/types';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -35,11 +39,20 @@ export default function SettingsScreen() {
   const addCustomActionType = useStore((s) => s.addCustomActionType);
   const removeCustomActionType = useStore((s) => s.removeCustomActionType);
   const setDefaultActionTypeDisabled = useStore((s) => s.setDefaultActionTypeDisabled);
+  const closedWeekdays = useStore((s) => s.closedWeekdays);
+  const singleServiceWeekdays = useStore((s) => s.singleServiceWeekdays);
+  const dayOverrides = useStore((s) => s.dayOverrides);
+  const setWeekdayStatus = useStore((s) => s.setWeekdayStatus);
+  const setDayOverride = useStore((s) => s.setDayOverride);
+  const removeDayOverride = useStore((s) => s.removeDayOverride);
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'closedDays'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [newCleaningArea, setNewCleaningArea] = useState('');
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideMonth, setOverrideMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [overridePicked, setOverridePicked] = useState<number | null>(null);
   const [editingUnit, setEditingUnit] = useState<{ original: string; value: string } | null>(null);
   const [newActionLabel, setNewActionLabel] = useState('');
   const [newActionDays, setNewActionDays] = useState('3');
@@ -58,7 +71,7 @@ export default function SettingsScreen() {
           setDrillDown({});
           return true;
         }
-        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas') {
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'closedDays') {
           setSection('custom');
           return true;
         }
@@ -128,11 +141,12 @@ export default function SettingsScreen() {
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
-  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'closedDays'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
     { id: 'cleaningAreas', label: 'Zones de nettoyage', description: 'Zones du contrôle nettoyage quotidien', icon: Sparkles },
+    { id: 'closedDays', label: 'Jours & services', description: 'Fermetures, services uniques, exceptions', icon: CalendarOff },
   ];
 
   if (section === 'menu') {
@@ -219,6 +233,183 @@ export default function SettingsScreen() {
             );
           })}
         </View>
+      </ScrollView>
+    );
+  }
+
+  if (section === 'closedDays') {
+    const SEG: { value: DayServiceStatus; label: string }[] = [
+      { value: 'open', label: 'Ouvert' },
+      { value: 'single', label: 'Unique' },
+      { value: 'closed', label: 'Fermé' },
+    ];
+    const segActiveClasses = (s: DayServiceStatus): string =>
+      s === 'open' ? 'bg-success' : s === 'single' ? 'bg-blue-500' : 'bg-gray-700';
+    const weekdayStatusOf = (wd: number): DayServiceStatus =>
+      (closedWeekdays ?? []).includes(wd) ? 'closed'
+        : (singleServiceWeekdays ?? []).includes(wd) ? 'single'
+        : 'open';
+    const statusDot = (s: DayServiceStatus): string =>
+      s === 'open' ? '#10B981' : s === 'single' ? '#3B82F6' : '#6B7280';
+    const liveOverrides = (dayOverrides ?? []).filter((o) => !o.deletedAt).sort((a, b) => a.date - b.date);
+
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24 }}>
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Jours & services</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Planning de service</Text>
+          </View>
+        </View>
+
+        <View className="bg-white p-4 rounded-2xl border border-gray-100 mb-5">
+          <Text className="text-[11px] font-medium text-gray-500">
+            <Text className="font-bold text-success">Ouvert</Text> : service complet (température début + fin).{'\n'}
+            <Text className="font-bold text-blue-600">Service unique</Text> : un seul relevé de température par enceinte ; huiles et nettoyage restent attendus.{'\n'}
+            <Text className="font-bold text-gray-600">Fermé</Text> : aucun contrôle attendu ni compté comme manquant.
+          </Text>
+        </View>
+
+        <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Par défaut · chaque semaine</Text>
+        <View className="gap-2 mb-6">
+          {WEEKDAYS.map((d) => {
+            const current = weekdayStatusOf(d.value);
+            return (
+              <View key={d.value} className="bg-white p-3 rounded-2xl border border-gray-100 gap-2.5">
+                <Text className="text-xs font-black text-gray-900 uppercase">{d.label}</Text>
+                <View className="flex-row p-1 bg-gray-100 rounded-xl gap-1">
+                  {SEG.map((seg) => {
+                    const active = current === seg.value;
+                    return (
+                      <Pressable
+                        key={seg.value}
+                        onPress={() => setWeekdayStatus(d.value, seg.value)}
+                        className={cn('flex-1 py-2 rounded-lg items-center', active && segActiveClasses(seg.value))}
+                      >
+                        <Text className={cn('text-[9px] font-black uppercase tracking-widest', active ? 'text-white' : 'text-gray-400')}>
+                          {seg.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Exceptions · dates précises</Text>
+          <Pressable
+            onPress={() => { setOverridePicked(null); setOverrideMonth(startOfMonth(new Date())); setShowOverrideModal(true); }}
+            className="flex-row items-center gap-1"
+          >
+            <Plus size={12} color="#10B981" />
+            <Text className="text-[10px] font-bold text-primary uppercase">Ajouter</Text>
+          </Pressable>
+        </View>
+        <View className="gap-2">
+          {liveOverrides.length === 0 ? (
+            <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
+                Aucune exception — jour férié, ouverture exceptionnelle…
+              </Text>
+            </View>
+          ) : liveOverrides.map((o) => (
+            <View key={o.id} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-3">
+              <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: statusDot(o.status) + '1A' }}>
+                <CalendarDays size={18} color={statusDot(o.status)} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-sm font-black text-gray-900 uppercase">{format(new Date(o.date), 'EEE d MMM yyyy', { locale: fr })}</Text>
+                <Text className="text-[9px] font-bold uppercase tracking-widest mt-0.5" style={{ color: statusDot(o.status) }}>{STATUS_LABELS[o.status]}</Text>
+              </View>
+              <Pressable onPress={() => removeDayOverride(o.date)} className="w-9 h-9 rounded-xl bg-red-50 items-center justify-center">
+                <Trash2 size={14} color="#EF4444" />
+              </Pressable>
+            </View>
+          ))}
+        </View>
+
+        <Modal visible={showOverrideModal} transparent animationType="fade" onRequestClose={() => setShowOverrideModal(false)}>
+          <View className="flex-1 bg-black/60 items-center justify-center p-6">
+            <View className="bg-white w-full rounded-3xl p-5 gap-4" style={{ maxWidth: 420 }}>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-black text-gray-900 uppercase">Ajouter une exception</Text>
+                <Pressable onPress={() => setShowOverrideModal(false)} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
+                  <X size={18} color="#9CA3AF" />
+                </Pressable>
+              </View>
+
+              <View className="flex-row items-center justify-between">
+                <Pressable onPress={() => setOverrideMonth((m) => addMonths(m, -1))} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
+                  <ChevronLeft size={18} color="#374151" />
+                </Pressable>
+                <Text className="text-sm font-black text-gray-900 uppercase">{format(overrideMonth, 'MMMM yyyy', { locale: fr })}</Text>
+                <Pressable onPress={() => setOverrideMonth((m) => addMonths(m, 1))} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
+                  <ChevronRight size={18} color="#374151" />
+                </Pressable>
+              </View>
+
+              <View className="flex-row">
+                {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+                  <View key={i} className="flex-1 items-center py-1">
+                    <Text className="text-[10px] font-bold text-gray-400 uppercase">{d}</Text>
+                  </View>
+                ))}
+              </View>
+              <View className="flex-row flex-wrap">
+                {(() => {
+                  const last = endOfMonth(overrideMonth);
+                  const leadingBlanks = (getDay(startOfMonth(overrideMonth)) + 6) % 7;
+                  const cells: React.ReactNode[] = [];
+                  for (let i = 0; i < leadingBlanks; i++) {
+                    cells.push(<View key={`b${i}`} style={{ width: '14.2857%' }} className="aspect-square" />);
+                  }
+                  for (let d = 1; d <= last.getDate(); d++) {
+                    const ts = new Date(overrideMonth.getFullYear(), overrideMonth.getMonth(), d).getTime();
+                    const isPick = overridePicked === ts;
+                    const ov = liveOverrides.find((o) => startOfDayMs(o.date) === ts);
+                    cells.push(
+                      <View key={d} style={{ width: '14.2857%' }} className="aspect-square p-0.5">
+                        <Pressable
+                          onPress={() => setOverridePicked(ts)}
+                          className={cn('flex-1 items-center justify-center rounded-xl', isPick ? 'bg-primary' : 'bg-gray-50')}
+                        >
+                          <Text className={cn('text-xs font-bold', isPick ? 'text-white' : 'text-gray-700')}>{d}</Text>
+                          {ov && <View className="w-1.5 h-1.5 rounded-full mt-0.5" style={{ backgroundColor: isPick ? '#fff' : statusDot(ov.status) }} />}
+                        </Pressable>
+                      </View>,
+                    );
+                  }
+                  return cells;
+                })()}
+              </View>
+
+              {overridePicked !== null && (
+                <View className="gap-2 pt-1">
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    Statut · {format(new Date(overridePicked), 'EEEE d MMMM', { locale: fr })}
+                  </Text>
+                  <View className="flex-row gap-2">
+                    {SEG.map((seg) => (
+                      <Pressable
+                        key={seg.value}
+                        onPress={() => { setDayOverride(overridePicked, seg.value); setShowOverrideModal(false); setOverridePicked(null); }}
+                        className={cn('flex-1 py-3 rounded-xl items-center', segActiveClasses(seg.value))}
+                      >
+                        <Text className="text-[10px] font-black uppercase text-white">{seg.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     );
   }

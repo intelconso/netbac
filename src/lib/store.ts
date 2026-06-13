@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
+import { dayOverrideId, startOfDayMs } from './serviceDays';
 
 interface StoreActions {
   addZone: (zone: Omit<Zone, 'id' | 'modifiedAt'>) => void;
@@ -46,6 +47,9 @@ interface StoreActions {
   deleteCleaningCheck: (id: string) => void;
   addCleaningArea: (name: string) => void;
   deleteCleaningArea: (name: string) => void;
+  setWeekdayStatus: (weekday: number, status: DayServiceStatus) => void;
+  setDayOverride: (date: number, status: DayServiceStatus) => void;
+  removeDayOverride: (date: number) => void;
   addReception: (reception: Omit<ReceptionCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>, options?: { timestamp?: number }) => void;
   updateReception: (id: string, reception: Partial<Omit<ReceptionCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
   deleteReception: (id: string) => void;
@@ -78,6 +82,9 @@ const INITIAL_STATE: AppState = {
   fabricationTypes: [],
   cleaningChecks: [],
   cleaningAreas: ['Restaurant / Salle', 'Cuisine / Stockage', 'Locaux communs'],
+  closedWeekdays: [],
+  singleServiceWeekdays: [],
+  dayOverrides: [],
   receptions: [],
   dailyRemarks: [],
   witnessSamples: [],
@@ -421,6 +428,35 @@ export const useStore = create<AppState & StoreActions>()(
         cleaningAreas: state.cleaningAreas.filter((a) => a !== name),
       })),
 
+      // Planning hebdomadaire — un jour est ouvert / unique / fermé. Les deux
+      // listes restent mutuellement exclusives. Local-authoritative (voir applyCloudState).
+      setWeekdayStatus: (weekday, status) => set((state) => {
+        const closed = (state.closedWeekdays ?? []).filter((d) => d !== weekday);
+        const single = (state.singleServiceWeekdays ?? []).filter((d) => d !== weekday);
+        if (status === 'closed') closed.push(weekday);
+        else if (status === 'single') single.push(weekday);
+        return {
+          closedWeekdays: closed.sort((a, b) => a - b),
+          singleServiceWeekdays: single.sort((a, b) => a - b),
+        };
+      }),
+
+      // Exception ponctuelle sur une date — upsert par début de journée (id
+      // déterministe), fusion newer-wins entre appareils. 'open' garde une
+      // exception explicite (ex. ouverture exceptionnelle un jour normalement fermé).
+      setDayOverride: (date, status) => set((state) => {
+        const d0 = startOfDayMs(date);
+        const id = dayOverrideId(d0);
+        const now = Date.now();
+        const rest = (state.dayOverrides ?? []).filter((o) => o.id !== id);
+        return { dayOverrides: [...rest, { id, date: d0, status, modifiedAt: now } as DayOverride] };
+      }),
+
+      removeDayOverride: (date) => set((state) => {
+        const id = dayOverrideId(date);
+        return { dayOverrides: (state.dayOverrides ?? []).map((o) => (o.id === id ? tomb(o) : o)) };
+      }),
+
       // Réceptions — same lifecycle as the other register controls.
       addReception: (reception, options) => {
         const now = Date.now();
@@ -550,6 +586,15 @@ export const useStore = create<AppState & StoreActions>()(
             dailyRemarks: mergeNewer(state.dailyRemarks, cloud.dailyRemarks),
             witnessSamples: mergeNewer(state.witnessSamples, cloud.witnessSamples),
             cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
+            // Restaurant config — local wins once set; a fresh device picks up the cloud value.
+            closedWeekdays: (state.closedWeekdays && state.closedWeekdays.length)
+              ? state.closedWeekdays
+              : ((cloud.closedWeekdays as number[]) ?? []),
+            singleServiceWeekdays: (state.singleServiceWeekdays && state.singleServiceWeekdays.length)
+              ? state.singleServiceWeekdays
+              : ((cloud.singleServiceWeekdays as number[]) ?? []),
+            // Per-date exceptions are real records (id + modifiedAt + tombstone) → newer-wins merge.
+            dayOverrides: mergeNewer(state.dayOverrides ?? [], cloud.dayOverrides),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
@@ -576,6 +621,9 @@ export const useStore = create<AppState & StoreActions>()(
         fabricationTypes: state.fabricationTypes,
         cleaningChecks: state.cleaningChecks,
         cleaningAreas: state.cleaningAreas,
+        closedWeekdays: state.closedWeekdays,
+        singleServiceWeekdays: state.singleServiceWeekdays,
+        dayOverrides: state.dayOverrides,
         receptions: state.receptions,
         dailyRemarks: state.dailyRemarks,
         witnessSamples: state.witnessSamples,

@@ -20,5 +20,6 @@ export function useActiveStore() {
   const receptions = useMemo(() => state.receptions.filter((r) => !r.deletedAt), [state.receptions]);
   const dailyRemarks = useMemo(() => state.dailyRemarks.filter((r) => !r.deletedAt), [state.dailyRemarks]);
   const witnessSamples = useMemo(() => state.witnessSamples.filter((s) => !s.deletedAt), [state.witnessSamples]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples };
+  const dayOverrides = useMemo(() => (state.dayOverrides ?? []).filter((o) => !o.deletedAt), [state.dayOverrides]);
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, dayOverrides };
 }

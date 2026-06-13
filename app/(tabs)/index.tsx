@@ -5,12 +5,13 @@ import { Scan, Plus, AlertTriangle, ClipboardCheck, FileText, Eye } from 'lucide
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
 import { isColdUnit } from '../../src/lib/fridgeTemp';
+import { dayStatus } from '../../src/lib/serviceDays';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits } = useActiveStore();
+  const { products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
 
@@ -33,20 +34,26 @@ export default function HomeScreen() {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const t0 = startOfToday.getTime();
+    const status = dayStatus(t0, { closedWeekdays, singleServiceWeekdays, dayOverrides });
+    // Jour fermé : aucun contrôle n'est attendu aujourd'hui.
+    if (status === 'closed') return 0;
     let pending = 0;
     if (!oilChecks.some((c) => c.timestamp >= t0)) pending += 1;
     const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
     const tempToday = fridgeTempChecks.filter((c) => c.timestamp >= t0);
-    const tempComplete = coldUnits.length > 0 && (['debut', 'fin'] as const).every((svc) =>
-      coldUnits.every((u) => tempToday.some((c) => c.unitId === u.id && c.service === svc))
-    );
+    // Service unique : un relevé par enceinte suffit ; sinon début + fin.
+    const tempComplete = coldUnits.length > 0 && (status === 'single'
+      ? coldUnits.every((u) => tempToday.some((c) => c.unitId === u.id))
+      : (['debut', 'fin'] as const).every((svc) =>
+          coldUnits.every((u) => tempToday.some((c) => c.unitId === u.id && c.service === svc))
+        ));
     if (coldUnits.length > 0 && !tempComplete) pending += 1;
     const cleaningComplete = cleaningAreas.length > 0 && cleaningAreas.every((a) =>
       cleaningChecks.some((c) => c.area === a && c.timestamp >= t0)
     );
     if (cleaningAreas.length > 0 && !cleaningComplete) pending += 1;
     return pending;
-  }, [oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits]);
+  }, [oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, closedWeekdays, singleServiceWeekdays, dayOverrides]);
 
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });

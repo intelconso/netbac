@@ -6,6 +6,7 @@ import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { lastControllerName } from '../../lib/controller';
+import { isClosedDay } from '../../lib/serviceDays';
 
 const DAY = 86400000;
 
@@ -14,7 +15,9 @@ const DAY = 86400000;
 // (colonne "Actions correctives si besoin" du registre papier).
 export default function CleaningCheckSection() {
   const store = useActiveStore();
-  const { cleaningAreas, cleaningChecks, addCleaningCheck, updateCleaningCheck } = store;
+  const { cleaningAreas, cleaningChecks, addCleaningCheck, updateCleaningCheck, closedWeekdays, singleServiceWeekdays, dayOverrides } = store;
+  // Service unique = nettoyage attendu comme un jour ouvert ; seul "fermé" neutralise.
+  const schedule = { closedWeekdays, singleServiceWeekdays, dayOverrides };
 
   const [controller, setController] = useState(() => lastControllerName(store));
   const [backfillDay, setBackfillDay] = useState<number | null>(null);
@@ -35,6 +38,7 @@ export default function CleaningCheckSection() {
   for (let i = 1; i <= 7; i++) {
     const day = startOfToday - i * DAY;
     if (day + DAY <= firstCheckAt) break;
+    if (isClosedDay(day, schedule)) continue; // service fermé — pas un manque
     const covered = cleaningChecks.some((c) => c.timestamp >= day && c.timestamp < day + DAY);
     if (!covered) missedDays.push(day);
   }

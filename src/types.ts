@@ -289,6 +289,23 @@ export interface User {
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
+// Statut de service d'une journée.
+// open : service complet (température début + fin).
+// single : service unique (un seul relevé de température par enceinte).
+// closed : fermé (aucun contrôle attendu).
+export type DayServiceStatus = 'open' | 'single' | 'closed';
+
+// Exception ponctuelle sur une date précise — prime sur le défaut hebdomadaire.
+// `date` est le début de journée (ms, heure locale) ; `id` en est dérivé pour
+// qu'une même date fusionne proprement entre appareils.
+export interface DayOverride {
+  id: string;
+  date: number;
+  status: DayServiceStatus;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface AppState {
   zones: Zone[];
   storageUnits: StorageUnit[];
@@ -303,6 +320,17 @@ export interface AppState {
   fabricationTypes: FabricationType[];
   cleaningChecks: CleaningCheck[];
   cleaningAreas: string[];
+  // Planning de service. Chaque jour est ouvert / service unique / fermé.
+  // - closedWeekdays : jours fermés récurrents (getDay() : 0 = dim … 6 = sam).
+  //   Aucun contrôle attendu ni compté comme manquant.
+  // - singleServiceWeekdays : jours à service unique récurrents. Les contrôles
+  //   quotidiens restent attendus, mais la température n'exige qu'un relevé par
+  //   enceinte (au lieu de début + fin).
+  // - dayOverrides : exceptions ponctuelles sur une date précise (jour férié,
+  //   ouverture exceptionnelle…) qui priment sur le défaut hebdomadaire.
+  closedWeekdays: number[];
+  singleServiceWeekdays: number[];
+  dayOverrides: DayOverride[];
   receptions: ReceptionCheck[];
   dailyRemarks: DailyRemark[];
   witnessSamples: WitnessSample[];

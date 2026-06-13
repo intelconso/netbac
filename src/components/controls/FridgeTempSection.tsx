@@ -5,6 +5,7 @@ import { useActiveStore } from '../../lib/useActive';
 import { cn } from '../../lib/utils';
 import { isColdUnit, isTempConform, targetLabel } from '../../lib/fridgeTemp';
 import { lastControllerName } from '../../lib/controller';
+import { isClosedDay, isSingleServiceDay } from '../../lib/serviceDays';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -19,8 +20,9 @@ const SERVICES = [
 // réglementaire du type d'enceinte ; action corrective exigée en cas d'écart.
 export default function FridgeTempSection() {
   const store = useActiveStore();
-  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck } = store;
+  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck, closedWeekdays, singleServiceWeekdays, dayOverrides } = store;
   const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
+  const schedule = { closedWeekdays, singleServiceWeekdays, dayOverrides };
 
   const [service, setService] = useState<'debut' | 'fin'>('debut');
   // Shared across all readings saved in this session — prefilled with the
@@ -46,11 +48,14 @@ export default function FridgeTempSection() {
   for (let i = 1; i <= 7; i++) {
     const day = startOfToday - i * DAY;
     if (day + DAY <= firstCheckAt) break;
+    if (isClosedDay(day, schedule)) continue; // service fermé — pas un manque
     const covered = fridgeTempChecks.some((c) => c.timestamp >= day && c.timestamp < day + DAY);
     if (!covered) missedDays.push(day);
   }
 
   const doneCount = (svc: 'debut' | 'fin') => coldUnits.filter((u) => checksFor(u.id, svc)).length;
+  // Service unique : un seul relevé par enceinte suffit (peu importe début/fin).
+  const singleDay = isSingleServiceDay(dayStart, schedule);
 
   const setTemp = (unitId: string, value: string) => setTemps((t) => ({ ...t, [unitId]: value }));
   const setAction = (unitId: string, value: string) => setActions((a) => ({ ...a, [unitId]: value }));
@@ -122,6 +127,14 @@ export default function FridgeTempSection() {
           <Pressable onPress={() => setBackfillDay(null)}>
             <Text className="text-[10px] font-black text-gray-400 uppercase">Retour</Text>
           </Pressable>
+        </View>
+      )}
+
+      {singleDay && (
+        <View className="bg-blue-500/10 p-3 rounded-xl">
+          <Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-center">
+            Service unique — un relevé par enceinte suffit
+          </Text>
         </View>
       )}
 

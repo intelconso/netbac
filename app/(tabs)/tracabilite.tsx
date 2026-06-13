@@ -13,6 +13,7 @@ import CleaningCheckSection from '../../src/components/controls/CleaningCheckSec
 import ReceptionSection from '../../src/components/controls/ReceptionSection';
 import DailyRemarkSection from '../../src/components/controls/DailyRemarkSection';
 import { isColdUnit } from '../../src/lib/fridgeTemp';
+import { dayStatus } from '../../src/lib/serviceDays';
 
 // Icône de carte qui se colore avec l'avancement du contrôle : ambre tant que
 // rien n'est fait, vert une fois complet. Entre les deux, la barre de
@@ -35,10 +36,17 @@ function ProgressBar({ progress }: { progress: number }) {
 // sur sa carte.
 export default function TracabiliteScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, storageUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
   const [openId, setOpenId] = useState<string | null>('oil');
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
+  const schedule = { closedWeekdays, singleServiceWeekdays, dayOverrides };
+  const todayStatus = dayStatus(startOfToday, schedule);
+  // Jour fermé : aucun contrôle attendu. Service unique : un seul relevé de
+  // température par enceinte (huiles/nettoyage restent attendus comme un jour ouvert).
+  const closedToday = todayStatus === 'closed';
+  const singleToday = todayStatus === 'single';
+  const NEUTRAL_TINT = { bg: 'bg-gray-100', color: '#9CA3AF' };
   const oilDoneToday = oilChecks.some((c) => c.timestamp >= startOfToday);
   const oilOpen = openId === 'oil';
 
@@ -47,7 +55,11 @@ export default function TracabiliteScreen() {
   const tempDone = (svc: 'debut' | 'fin') => coldUnits.filter((u) => todayTemp.some((c) => c.unitId === u.id && c.service === svc)).length;
   const debutDone = tempDone('debut');
   const finDone = tempDone('fin');
-  const tempComplete = coldUnits.length > 0 && debutDone === coldUnits.length && finDone === coldUnits.length;
+  // Service unique : une enceinte est "relevée" dès qu'elle a au moins un relevé.
+  const unitsRelevés = coldUnits.filter((u) => todayTemp.some((c) => c.unitId === u.id)).length;
+  const tempComplete = coldUnits.length > 0 && (singleToday
+    ? unitsRelevés === coldUnits.length
+    : debutDone === coldUnits.length && finDone === coldUnits.length);
   const tempOpen = openId === 'temp';
 
   const fabToday = fabrications.filter((f) => f.timestamp >= startOfToday).length;
@@ -65,11 +77,18 @@ export default function TracabiliteScreen() {
   ).length;
   const cleaningProgress = cleaningAreas.length > 0 ? cleaningDone / cleaningAreas.length : 0;
   const cleaningOpen = openId === 'cleaning';
-  const cleaningTint = progressTint(cleaningProgress);
+  const cleaningClosed = closedToday && cleaningProgress < 1;
+  const cleaningTint = cleaningClosed ? NEUTRAL_TINT : progressTint(cleaningProgress);
 
   const oilProgress = oilDoneToday ? 1 : 0;
-  const tempProgress = coldUnits.length > 0 ? (debutDone + finDone) / (2 * coldUnits.length) : 0;
-  const oilTint = progressTint(oilProgress);
+  const tempProgress = coldUnits.length === 0
+    ? 0
+    : singleToday
+    ? unitsRelevés / coldUnits.length
+    : (debutDone + finDone) / (2 * coldUnits.length);
+  const oilClosed = closedToday && !oilDoneToday;
+  const tempClosed = closedToday && !tempComplete;
+  const oilTint = oilClosed ? NEUTRAL_TINT : progressTint(oilProgress);
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, gap: 16 }}>
@@ -87,6 +106,21 @@ export default function TracabiliteScreen() {
         </Pressable>
       </View>
 
+      {closedToday && (
+        <View className="bg-gray-100 p-3 rounded-2xl">
+          <Text className="text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">
+            Service fermé aujourd'hui — contrôles non requis
+          </Text>
+        </View>
+      )}
+      {singleToday && (
+        <View className="bg-blue-500/10 p-3 rounded-2xl">
+          <Text className="text-[10px] font-black text-blue-600 uppercase tracking-widest text-center">
+            Service unique aujourd'hui — un relevé de température par enceinte
+          </Text>
+        </View>
+      )}
+
       <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
         <Pressable onPress={() => setOpenId(oilOpen ? null : 'oil')} className="p-4 flex-row items-center gap-4 active:bg-gray-50">
           <View className={cn('w-10 h-10 rounded-xl items-center justify-center', oilTint.bg)}>
@@ -94,8 +128,8 @@ export default function TracabiliteScreen() {
           </View>
           <View className="flex-1">
             <Text className="text-xs font-black text-gray-900 uppercase">Huiles de friture</Text>
-            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', oilDoneToday ? 'text-success' : 'text-alert')}>
-              {oilDoneToday ? 'Contrôle du jour effectué' : 'Contrôle du jour à faire'}
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', oilDoneToday ? 'text-success' : oilClosed ? 'text-gray-400' : 'text-alert')}>
+              {oilDoneToday ? 'Contrôle du jour effectué' : oilClosed ? 'Service fermé' : 'Contrôle du jour à faire'}
             </Text>
           </View>
           {oilOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
@@ -117,9 +151,13 @@ export default function TracabiliteScreen() {
           </View>
           <View className="flex-1">
             <Text className="text-xs font-black text-gray-900 uppercase">Températures frigorifiques</Text>
-            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', tempComplete ? 'text-success' : 'text-alert')}>
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', tempComplete ? 'text-success' : tempClosed ? 'text-gray-400' : 'text-alert')}>
               {coldUnits.length === 0
                 ? 'Aucune enceinte configurée'
+                : tempClosed
+                ? 'Service fermé'
+                : singleToday
+                ? `${unitsRelevés}/${coldUnits.length} enceinte${coldUnits.length > 1 ? 's' : ''} relevée${unitsRelevés > 1 ? 's' : ''}`
                 : `Début ${debutDone}/${coldUnits.length} • Fin ${finDone}/${coldUnits.length}`}
             </Text>
           </View>
@@ -142,8 +180,10 @@ export default function TracabiliteScreen() {
           </View>
           <View className="flex-1">
             <Text className="text-xs font-black text-gray-900 uppercase">Contrôles nettoyage</Text>
-            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', cleaningProgress >= 1 ? 'text-success' : 'text-alert')}>
-              {cleaningDone}/{cleaningAreas.length} zone{cleaningAreas.length > 1 ? 's' : ''} contrôlée{cleaningDone > 1 ? 's' : ''}
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', cleaningProgress >= 1 ? 'text-success' : cleaningClosed ? 'text-gray-400' : 'text-alert')}>
+              {cleaningClosed
+                ? 'Service fermé'
+                : `${cleaningDone}/${cleaningAreas.length} zone${cleaningAreas.length > 1 ? 's' : ''} contrôlée${cleaningDone > 1 ? 's' : ''}`}
             </Text>
           </View>
           {cleaningOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
