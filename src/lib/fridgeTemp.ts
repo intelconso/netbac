@@ -21,6 +21,16 @@ export function targetLabel(type: StorageUnit['type']): string {
   return t.min !== undefined ? `${t.min} à +${t.max}°C` : `≤ ${t.max}°C`;
 }
 
+// Valeur de départ proposée dans le champ de saisie — un relevé conforme
+// typique que l'opérateur n'a plus qu'à ajuster : milieu de plage pour les
+// enceintes positives, quelques degrés sous la limite pour les négatives.
+export function defaultTemp(type: StorageUnit['type']): string {
+  const t = FRIDGE_TEMP_TARGETS[type];
+  if (!t) return '';
+  if (t.min !== undefined) return String((t.min + t.max) / 2);
+  return String(t.max - 2);
+}
+
 export function isTempConform(type: StorageUnit['type'], temperature: number): boolean {
   const t = FRIDGE_TEMP_TARGETS[type];
   if (!t) return true;

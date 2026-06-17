@@ -3,7 +3,7 @@ import { View, Text, Pressable, TextInput } from 'react-native';
 import { CheckCircle2, Pencil, Thermometer, XCircle } from 'lucide-react-native';
 import { useActiveStore } from '../../lib/useActive';
 import { cn } from '../../lib/utils';
-import { isColdUnit, isTempConform, targetLabel } from '../../lib/fridgeTemp';
+import { defaultTemp, isColdUnit, isTempConform, targetLabel } from '../../lib/fridgeTemp';
 import { lastControllerName } from '../../lib/controller';
 import { isClosedDay, isSingleServiceDay } from '../../lib/serviceDays';
 import { format } from 'date-fns';
@@ -65,6 +65,20 @@ export default function FridgeTempSection() {
     return Number.isFinite(v) ? v : null;
   };
 
+  // Saisie sans clavier : steppers ±0.5°C et bascule de signe — évite de
+  // chercher le « − » sur le pavé numérique (réglages froid souvent négatifs).
+  const fmtTemp = (n: number) => String(Math.round(n * 10) / 10);
+  // Les helpers tweakent la valeur visible (qui peut être le défaut pré-rempli).
+  const stepTemp = (unitId: string, draft: string, delta: number) => {
+    setTemp(unitId, fmtTemp((parseTemp(draft) ?? 0) + delta));
+  };
+  const toggleSign = (unitId: string, draft: string) => {
+    const cur = parseTemp(draft);
+    // Champ vide : amorce un « − » pour que les chiffres saisis soient négatifs.
+    if (cur === null) setTemp(unitId, draft.trim().startsWith('-') ? '' : '-');
+    else setTemp(unitId, fmtTemp(-cur));
+  };
+
   const startEdit = (unitId: string) => {
     const existing = checksFor(unitId, service);
     if (!existing) return;
@@ -102,7 +116,9 @@ export default function FridgeTempSection() {
         backfillDay ? { timestamp: backfillDay + (service === 'debut' ? 10 : 22) * 3600000 } : undefined
       );
     }
-    setTemps((t) => ({ ...t, [unitId]: '' }));
+    // Retire le brouillon (et non '') pour que le défaut se ré-applique au
+    // prochain relevé de la même enceinte (2e service, jour suivant…).
+    setTemps((t) => { const { [unitId]: _drop, ...rest } = t; return rest; });
     setActions((a) => ({ ...a, [unitId]: '' }));
     setEditingUnitId(null);
   };
@@ -162,9 +178,12 @@ export default function FridgeTempSection() {
         {coldUnits.map((unit) => {
           const existing = checksFor(unit.id, service);
           const editing = editingUnitId === unit.id;
-          const draft = temps[unit.id] ?? '';
+          // Pré-rempli avec un relevé conforme typique — à ajuster, pas à ressaisir.
+          const draft = temps[unit.id] ?? defaultTemp(unit.type);
           const parsed = parseTemp(draft);
           const draftConform = parsed === null ? null : isTempConform(unit.type, parsed);
+          const negative = draft.trim().startsWith('-');
+          const canSave = parsed !== null && !!controller.trim() && !(draftConform === false && !(actions[unit.id] ?? '').trim());
 
           if (existing && !editing) {
             return (
@@ -202,22 +221,38 @@ export default function FridgeTempSection() {
                 </View>
                 <Thermometer size={16} color="#9CA3AF" />
               </View>
-              <View className="flex-row items-center gap-2">
-                <TextInput
-                  value={draft}
-                  onChangeText={(v) => setTemp(unit.id, v)}
-                  placeholder="—"
-                  keyboardType="numbers-and-punctuation"
-                  className={cn('flex-1 p-3 bg-gray-50 rounded-xl text-sm font-bold', draftConform === false && 'border border-danger')}
-                />
-                <Text className="text-xs font-black text-gray-400">°C</Text>
-                <Pressable
-                  disabled={parsed === null || !controller.trim() || (draftConform === false && !(actions[unit.id] ?? '').trim())}
-                  onPress={() => saveUnit(unit.id)}
-                  className={cn('px-4 py-3 bg-primary rounded-xl', (parsed === null || !controller.trim() || (draftConform === false && !(actions[unit.id] ?? '').trim())) && 'opacity-40')}
-                >
-                  <Text className="text-[10px] font-black text-white uppercase">{editing ? 'Modifier' : 'OK'}</Text>
-                </Pressable>
+              <View className="gap-2">
+                <View className="flex-row items-center gap-2">
+                  <Pressable
+                    onPress={() => toggleSign(unit.id, draft)}
+                    className={cn('w-12 h-12 rounded-xl items-center justify-center border', negative ? 'bg-primary border-primary' : 'bg-gray-50 border-gray-100')}
+                  >
+                    <Text className={cn('text-lg font-black', negative ? 'text-white' : 'text-gray-400')}>±</Text>
+                  </Pressable>
+                  <TextInput
+                    value={draft}
+                    onChangeText={(v) => setTemp(unit.id, v)}
+                    placeholder="—"
+                    keyboardType="decimal-pad"
+                    className={cn('flex-1 p-3 bg-gray-50 rounded-xl text-2xl font-black text-center', draftConform === false && 'border border-danger')}
+                  />
+                  <Text className="text-xs font-black text-gray-400">°C</Text>
+                </View>
+                <View className="flex-row gap-2">
+                  <Pressable onPress={() => stepTemp(unit.id, draft, -0.5)} className="flex-1 py-3 bg-gray-50 rounded-xl items-center border border-gray-100">
+                    <Text className="text-base font-black text-gray-600">− 0.5</Text>
+                  </Pressable>
+                  <Pressable onPress={() => stepTemp(unit.id, draft, 0.5)} className="flex-1 py-3 bg-gray-50 rounded-xl items-center border border-gray-100">
+                    <Text className="text-base font-black text-gray-600">+ 0.5</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={!canSave}
+                    onPress={() => saveUnit(unit.id)}
+                    className={cn('px-5 py-3 bg-primary rounded-xl items-center justify-center', !canSave && 'opacity-40')}
+                  >
+                    <Text className="text-[10px] font-black text-white uppercase">{editing ? 'Modifier' : 'OK'}</Text>
+                  </Pressable>
+                </View>
               </View>
               {draftConform === false && (
                 <View className="gap-2">
