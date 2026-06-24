@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
 import { deriveColdUnits } from './tempUnits';
+import { nextCheckFrom } from './pestControl';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
 
 interface StoreActions {
@@ -65,6 +66,12 @@ interface StoreActions {
   updateWitnessSample: (id: string, sample: Partial<Omit<WitnessSample, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
   deleteWitnessSample: (id: string) => void;
   completeCleaningTask: (taskId: string) => void;
+  addPestControlCheck: (check: Omit<PestControlCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt' | 'nextCheck'>, options?: { timestamp?: number; nextCheck?: number }) => void;
+  updatePestControlCheck: (id: string, check: Partial<Omit<PestControlCheck, 'id' | 'timestamp' | 'recordedAt' | 'modifiedAt'>>) => void;
+  deletePestControlCheck: (id: string) => void;
+  addPestStation: (station: { number: string; zone: string }) => void;
+  deletePestStation: (id: string) => void;
+  setPestCadence: (cadence: PestCadence) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
@@ -87,6 +94,9 @@ const INITIAL_STATE: AppState = {
   fabricationTypes: [],
   cleaningChecks: [],
   cleaningAreas: ['Restaurant / Salle', 'Cuisine / Stockage', 'Locaux communs'],
+  pestControlChecks: [],
+  pestStations: [],
+  pestCadence: undefined,
   closedWeekdays: [],
   singleServiceWeekdays: [],
   dayOverrides: [],
@@ -563,6 +573,44 @@ export const useStore = create<AppState & StoreActions>()(
         }));
       },
 
+      // Lutte contre les nuisibles — passage périodique. `nextCheck` est
+      // pré-calculé depuis la cadence (modifiable via options) ; sinon même
+      // cycle de vie que les autres contrôles du registre (backfill, tombstone).
+      addPestControlCheck: (check, options) => {
+        const now = Date.now();
+        set((state) => {
+          const timestamp = options?.timestamp ?? now;
+          const nextCheck = options?.nextCheck ?? nextCheckFrom(timestamp, state.pestCadence);
+          return {
+            pestControlChecks: [...state.pestControlChecks, { ...check, id: randomId(), timestamp, nextCheck, recordedAt: now, modifiedAt: now } as PestControlCheck],
+          };
+        });
+      },
+
+      updatePestControlCheck: (id, check) => set((state) => ({
+        pestControlChecks: state.pestControlChecks.map((c) => (c.id === id ? { ...c, ...check, modifiedAt: Date.now() } : c)),
+      })),
+
+      deletePestControlCheck: (id) => set((state) => ({
+        pestControlChecks: state.pestControlChecks.map((c) => (c.id === id ? tomb(c) : c)),
+      })),
+
+      // Stations du plan — entités (id + modifiedAt + tombstone) pour propager
+      // ajouts/suppressions entre appareils. Les passages référencent les n°
+      // librement (texte), donc supprimer une station ne casse pas l'historique.
+      addPestStation: ({ number, zone }) => set((state) => {
+        const n = number.trim();
+        const z = zone.trim();
+        if (!n && !z) return {};
+        return { pestStations: [...state.pestStations, { id: randomId(), number: n, zone: z, modifiedAt: Date.now() }] };
+      }),
+
+      deletePestStation: (id) => set((state) => ({
+        pestStations: state.pestStations.map((s) => (s.id === id ? tomb(s) : s)),
+      })),
+
+      setPestCadence: (cadence) => set({ pestCadence: cadence }),
+
       setUser: (user) => set({ user }),
 
       updateSettings: (newSettings) => set((state) => ({
@@ -636,6 +684,10 @@ export const useStore = create<AppState & StoreActions>()(
             dailyRemarks: mergeNewer(state.dailyRemarks, cloud.dailyRemarks),
             witnessSamples: mergeNewer(state.witnessSamples, cloud.witnessSamples),
             cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
+            pestControlChecks: mergeNewer(state.pestControlChecks ?? [], cloud.pestControlChecks),
+            pestStations: mergeNewer(state.pestStations ?? [], cloud.pestStations),
+            // Cadence config — local wins once set; a fresh device picks up the cloud value.
+            pestCadence: state.pestCadence ?? (cloud.pestCadence as PestCadence | undefined),
             // Restaurant config — local wins once set; a fresh device picks up the cloud value.
             closedWeekdays: (state.closedWeekdays && state.closedWeekdays.length)
               ? state.closedWeekdays
@@ -672,6 +724,9 @@ export const useStore = create<AppState & StoreActions>()(
         fabricationTypes: state.fabricationTypes,
         cleaningChecks: state.cleaningChecks,
         cleaningAreas: state.cleaningAreas,
+        pestControlChecks: state.pestControlChecks,
+        pestStations: state.pestStations,
+        pestCadence: state.pestCadence,
         closedWeekdays: state.closedWeekdays,
         singleServiceWeekdays: state.singleServiceWeekdays,
         dayOverrides: state.dayOverrides,

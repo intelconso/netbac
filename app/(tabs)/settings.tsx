@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, Bug, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer } from 'lucide-react-native';
 import { format, startOfMonth, endOfMonth, getDay, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { signOut } from '../../src/lib/firebase';
@@ -11,6 +11,7 @@ import { useStore } from '../../src/lib/store';
 import { cn } from '../../src/lib/utils';
 import { ActionType, ContainerType, StorageUnit, ZoneType } from '../../src/types';
 import { ACTION_TYPES } from '../../src/lib/actionTypes';
+import { PEST_CADENCES } from '../../src/lib/pestControl';
 import CreateZoneModal from '../../src/components/CreateZoneModal';
 import CreateUnitModal from '../../src/components/CreateUnitModal';
 import CreateBacModal from '../../src/components/CreateBacModal';
@@ -41,7 +42,10 @@ export default function SettingsScreen() {
     addBac, deleteBac,
     productUnits, addProductUnit, updateProductUnit, deleteProductUnit,
     cleaningAreas, addCleaningArea, deleteCleaningArea,
+    pestStations, addPestStation, deletePestStation,
   } = useActiveStore();
+  const pestCadence = useStore((s) => s.pestCadence);
+  const setPestCadence = useStore((s) => s.setPestCadence);
   // Direct selectors — useActiveStore destructure doesn't always re-render on
   // these new fields in Zustand 5; selectors guarantee a fresh subscription.
   const customActionTypes = useStore((s) => s.customActionTypes);
@@ -62,10 +66,12 @@ export default function SettingsScreen() {
   const moveTempUnit = useStore((s) => s.moveTempUnit);
   const tempUnits = resolveTempUnits({ tempUnits: tempUnitsRaw, storageUnits });
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [newCleaningArea, setNewCleaningArea] = useState('');
+  const [newPestNumber, setNewPestNumber] = useState('');
+  const [newPestZone, setNewPestZone] = useState('');
   const [newTempName, setNewTempName] = useState('');
   const [newTempType, setNewTempType] = useState<StorageUnit['type']>('frigo');
   const [editingTemp, setEditingTemp] = useState<{ id: string; value: string } | null>(null);
@@ -90,7 +96,7 @@ export default function SettingsScreen() {
           setDrillDown({});
           return true;
         }
-        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays') {
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays' || section === 'pestControl') {
           setSection('custom');
           return true;
         }
@@ -160,12 +166,13 @@ export default function SettingsScreen() {
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
-  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
     { id: 'cleaningAreas', label: 'Zones de nettoyage', description: 'Zones du contrôle nettoyage quotidien', icon: Sparkles },
     { id: 'tempUnits', label: 'Zones de température', description: 'Zones du relevé de température quotidien', icon: Thermometer },
+    { id: 'pestControl', label: 'Lutte contre les nuisibles', description: 'Pièges du plan & cadence des contrôles', icon: Bug },
     { id: 'closedDays', label: 'Jours & services', description: 'Fermetures, services uniques, exceptions', icon: CalendarOff },
   ];
 
@@ -561,6 +568,90 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
       </KeyboardAvoidingView>
+    );
+  }
+
+  if (section === 'pestControl') {
+    const addStation = () => {
+      if (!newPestNumber.trim() && !newPestZone.trim()) return;
+      addPestStation({ number: newPestNumber, zone: newPestZone });
+      setNewPestNumber('');
+      setNewPestZone('');
+    };
+    return (
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24 }}>
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Lutte contre les nuisibles</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Plan & cadence des contrôles</Text>
+          </View>
+        </View>
+
+        {/* Cadence — pilote le calcul du prochain contrôle. */}
+        <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cadence des contrôles</Text>
+        <View className="flex-row flex-wrap gap-2 mb-6">
+          {PEST_CADENCES.map((c) => {
+            const active = (pestCadence ?? 'weekly') === c.value;
+            return (
+              <Pressable
+                key={c.value}
+                onPress={() => setPestCadence(c.value)}
+                className={cn('px-3 py-2.5 rounded-xl border', active ? 'bg-primary/10 border-primary' : 'bg-white border-gray-100')}
+              >
+                <Text className={cn('text-[10px] font-black uppercase', active ? 'text-primary' : 'text-gray-400')}>{c.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {/* Pièges / appâts du plan — n° + zone (mêmes infos que le plan papier). */}
+        <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pièges / appâts du plan</Text>
+        <View className="bg-white rounded-2xl border border-gray-100 flex-row items-center gap-2 p-2 mb-4">
+          <TextInput
+            value={newPestNumber}
+            onChangeText={setNewPestNumber}
+            placeholder="N°"
+            className="w-16 px-3 py-2 text-sm font-bold text-gray-900"
+          />
+          <TextInput
+            value={newPestZone}
+            onChangeText={setNewPestZone}
+            placeholder="Zone (ex: Cuisine, Réserve...)"
+            className="flex-1 px-3 py-2 text-sm font-bold text-gray-900"
+            onSubmitEditing={addStation}
+            returnKeyType="done"
+          />
+          <Pressable
+            onPress={addStation}
+            disabled={!newPestNumber.trim() && !newPestZone.trim()}
+            className={cn('w-10 h-10 rounded-xl items-center justify-center', (newPestNumber.trim() || newPestZone.trim()) ? 'bg-primary' : 'bg-gray-100')}
+          >
+            <Plus size={18} color={(newPestNumber.trim() || newPestZone.trim()) ? '#fff' : '#9CA3AF'} />
+          </Pressable>
+        </View>
+
+        <View className="gap-2">
+          {pestStations.map((s) => (
+            <View key={s.id} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-3">
+              <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center">
+                <Bug size={18} color="#10B981" />
+              </View>
+              <Text className="flex-1 text-sm font-black text-gray-900 uppercase">{s.number ? `${s.number} · ` : ''}{s.zone}</Text>
+              <Pressable onPress={() => deletePestStation(s.id)} className="w-9 h-9 rounded-xl bg-red-50 items-center justify-center">
+                <Trash2 size={14} color="#EF4444" />
+              </Pressable>
+            </View>
+          ))}
+          {pestStations.length === 0 && (
+            <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Aucun piège — ajoutez-en un</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     );
   }
 

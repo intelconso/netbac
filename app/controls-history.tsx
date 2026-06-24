@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, MessageSquare, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
+import { ArrowLeft, Bug, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, MessageSquare, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
@@ -9,6 +9,7 @@ import { targetLabel } from '../src/lib/fridgeTemp';
 import { fabricationDetails } from '../src/lib/fabrication';
 import { addMonths, endOfMonth, format, getDay, startOfDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { interventionLabel } from '../src/lib/pestControl';
 
 // Historique des contrôles HACCP — un jour affiché à la fois, groupé par type
 // de contrôle. Chaque contrôle du registre alimente la même liste en mappant
@@ -30,7 +31,7 @@ interface DayEntry {
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
   // Which control group is expanded for the displayed day.
   const [openControl, setOpenControl] = useState<string | null>(null);
@@ -46,8 +47,8 @@ export default function ControlsHistoryScreen() {
   const dayEnd = day + DAY - 1;
 
   const earliest = useMemo(
-    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions, ...dailyRemarks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks]
+    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions, ...dailyRemarks, ...pestControlChecks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks]
   );
   const canGoBack = day > startOfDay(new Date(earliest)).getTime();
   const canGoForward = day < startOfDay(new Date()).getTime();
@@ -190,15 +191,43 @@ export default function ControlsHistoryScreen() {
         ],
       }));
 
+    const pestEntries: DayEntry[] = pestControlChecks
+      .filter((c) => c.timestamp >= dayStart && c.timestamp <= dayEnd)
+      .map((c) => ({
+        id: c.id,
+        control: 'Lutte nuisibles',
+        icon: Bug,
+        ok: true,
+        title: interventionLabel(c.interventionTypes),
+        subtitle: `${c.nature === 'curatif' ? 'Curatif' : 'Préventif'} • ${format(new Date(c.timestamp), 'HH:mm', { locale: fr })}`,
+        timestamp: c.timestamp,
+        ...(c.nature === 'curatif' ? { badge: 'Curatif' } : {}),
+        details: [
+          { label: 'Type', value: interventionLabel(c.interventionTypes) },
+          { label: 'Nature', value: c.nature === 'curatif' ? 'Curatif' : 'Préventif' },
+          ...(c.zones ? [{ label: 'Zones concernées', value: c.zones }] : []),
+          ...(c.baitLocations ? [{ label: 'Localisation appâts / pièges', value: c.baitLocations }] : []),
+          ...(c.products ? [{ label: 'Produits utilisés', value: c.products }] : []),
+          ...(c.amm ? [{ label: 'N° AMM', value: c.amm }] : []),
+          ...(c.findings ? [{ label: 'Constats', value: c.findings }] : []),
+          ...(c.correctiveAction ? [{ label: 'Actions correctives', value: c.correctiveAction }] : []),
+          ...(c.nextCheck ? [{ label: 'Prochain contrôle', value: format(new Date(c.nextCheck), 'EEEE d MMMM yyyy', { locale: fr }) }] : []),
+          ...(c.operatorName ? [{ label: 'Responsable', value: c.operatorName }] : []),
+          { label: 'Date', value: format(new Date(c.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+          ...(c.backfilled ? [{ label: 'Saisie', value: 'A posteriori (jour complété plus tard)' }] : []),
+          ...(c.recordedAt ? [{ label: 'Enregistré le', value: format(new Date(c.recordedAt), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) }] : []),
+        ],
+      }));
+
     // Single day shown — group by control type for readability.
     // (Plats témoins masqué pour l'instant — restauration collective only.)
     const byControl = new Map<string, DayEntry[]>();
-    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries, ...remarkEntries]) {
+    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries, ...remarkEntries, ...pestEntries]) {
       byControl.set(e.control, [...(byControl.get(e.control) ?? []), e]);
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">

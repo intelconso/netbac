@@ -2,6 +2,7 @@ import * as Print from 'expo-print';
 import { AppState, Product } from '../types';
 import { formatDate, getDaysRemaining } from './utils';
 import { fabricationDetails } from './fabrication';
+import { interventionLabel } from './pestControl';
 
 export type ReportFilter = {
   from?: number | null;        // timestamp, inclusive
@@ -21,6 +22,7 @@ export type ReportFilter = {
   includeCleaningChecks?: boolean;
   includeReceptions?: boolean;
   includeRemarks?: boolean;
+  includePestControl?: boolean;
 };
 
 const DEFAULT_FILTER: Required<Pick<ReportFilter, 'statuses' | 'includeSummary' | 'includeTraceability'>> = {
@@ -236,6 +238,31 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
        </table>`
     : '';
 
+  const pestControl = (state.pestControlChecks ?? [])
+    .filter((c) => !c.deletedAt)
+    .filter((c) => (!f.from || c.timestamp >= f.from) && (!f.to || c.timestamp <= f.to))
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const pestSection = f.includePestControl !== false && pestControl.length > 0
+    ? `<h2>Lutte contre les nuisibles (${pestControl.length})</h2>
+       <table>
+         <thead><tr><th>Date</th><th>Type</th><th>Nature</th><th>Zones</th><th>Localisation</th><th>Produits</th><th>N° AMM</th><th>Constats</th><th>Actions correctives</th><th>Prochain contrôle</th><th>Responsable</th></tr></thead>
+         <tbody>${pestControl.map((c) => `
+           <tr>
+             <td>${formatDate(c.timestamp)}</td>
+             <td>${interventionLabel(c.interventionTypes)}</td>
+             <td>${c.nature === 'curatif' ? 'Curatif' : 'Préventif'}</td>
+             <td>${c.zones ?? '—'}</td>
+             <td>${c.baitLocations ?? '—'}</td>
+             <td>${c.products ?? '—'}</td>
+             <td>${c.amm ?? '—'}</td>
+             <td>${[c.backfilled ? 'Saisi a posteriori' : null, c.findings].filter(Boolean).join(' — ') || '—'}</td>
+             <td>${c.correctiveAction ?? '—'}</td>
+             <td>${c.nextCheck ? formatDate(c.nextCheck) : '—'}</td>
+             <td>${c.operatorName ?? '—'}</td>
+           </tr>`).join('')}</tbody>
+       </table>`
+    : '';
+
   return `<!doctype html><html><head><meta charset="utf-8"/>
     <style>
       body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 24px; color: #111827; }
@@ -277,6 +304,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
     ${cleaningSection}
     ${receptionSection}
     ${remarksSection}
+    ${pestSection}
     </body></html>`;
 }
 

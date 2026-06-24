@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ChefHat, ChevronDown, ChevronRight, Droplets, History, MessageSquare, Sparkles, Thermometer, Truck } from 'lucide-react-native';
+import { Bug, ChefHat, ChevronDown, ChevronRight, Droplets, History, MessageSquare, Sparkles, Thermometer, Truck } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn } from '../../src/lib/utils';
 import { format } from 'date-fns';
@@ -12,8 +12,11 @@ import FabricationSection from '../../src/components/controls/FabricationSection
 import CleaningCheckSection from '../../src/components/controls/CleaningCheckSection';
 import ReceptionSection from '../../src/components/controls/ReceptionSection';
 import DailyRemarkSection from '../../src/components/controls/DailyRemarkSection';
+import PestControlSection from '../../src/components/controls/PestControlSection';
 import { resolveTempUnits } from '../../src/lib/tempUnits';
 import { dayStatus } from '../../src/lib/serviceDays';
+import { pestStatus } from '../../src/lib/pestControl';
+import { format as formatDateFns } from 'date-fns';
 
 // Icône de carte qui se colore avec l'avancement du contrôle : ambre tant que
 // rien n'est fait, vert une fois complet. Entre les deux, la barre de
@@ -36,7 +39,7 @@ function ProgressBar({ progress }: { progress: number }) {
 // sur sa carte.
 export default function TracabiliteScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, pestControlChecks, pestCadence, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
   const [openId, setOpenId] = useState<string | null>('oil');
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
@@ -71,6 +74,26 @@ export default function TracabiliteScreen() {
 
   const remarksToday = dailyRemarks.filter((r) => r.timestamp >= startOfToday).length;
   const remarksOpen = openId === 'remarks';
+
+  // Lutte contre les nuisibles — périodique (pas quotidien) : statut basé sur
+  // l'échéance du prochain contrôle, pas sur "fait aujourd'hui".
+  const pest = pestStatus(pestControlChecks, pestCadence, Date.now());
+  const pestOpen = openId === 'pest';
+  const pestTint = pest.state === 'ok'
+    ? { bg: 'bg-success/10', color: '#10B981' }
+    : pest.state === 'overdue'
+    ? { bg: 'bg-danger/10', color: '#EF4444' }
+    : { bg: 'bg-alert/10', color: '#F59E0B' };
+  const pestStatusText = pest.state === 'none'
+    ? 'Aucun passage — à programmer'
+    : pest.state === 'overdue' && pest.nextDue
+    ? `En retard — prévu le ${formatDateFns(new Date(pest.nextDue), 'd MMM', { locale: fr })}`
+    : pest.state === 'due'
+    ? "Contrôle dû aujourd'hui"
+    : pest.nextDue
+    ? `À jour • prochain le ${formatDateFns(new Date(pest.nextDue), 'd MMM', { locale: fr })}`
+    : 'À jour';
+  const pestStatusColor = pest.state === 'ok' ? 'text-success' : pest.state === 'overdue' ? 'text-danger' : 'text-alert';
 
   const cleaningDone = cleaningAreas.filter((a) =>
     cleaningChecks.some((c) => c.area === a && c.timestamp >= startOfToday)
@@ -261,6 +284,28 @@ export default function TracabiliteScreen() {
           <View className="p-4 pt-0 border-t border-gray-50">
             <View className="pt-4">
               <DailyRemarkSection />
+            </View>
+          </View>
+        )}
+      </View>
+
+      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <Pressable onPress={() => setOpenId(pestOpen ? null : 'pest')} className="p-4 flex-row items-center gap-4 active:bg-gray-50">
+          <View className={cn('w-10 h-10 rounded-xl items-center justify-center', pestTint.bg)}>
+            <Bug size={18} color={pestTint.color} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-xs font-black text-gray-900 uppercase">Lutte contre les nuisibles</Text>
+            <Text className={cn('text-[9px] font-bold uppercase tracking-widest mt-0.5', pestStatusColor)}>
+              {pestStatusText}
+            </Text>
+          </View>
+          {pestOpen ? <ChevronDown size={16} color="#9CA3AF" /> : <ChevronRight size={16} color="#9CA3AF" />}
+        </Pressable>
+        {pestOpen && (
+          <View className="p-4 pt-0 border-t border-gray-50">
+            <View className="pt-4">
+              <PestControlSection embedded />
             </View>
           </View>
         )}

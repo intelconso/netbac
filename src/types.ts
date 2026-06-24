@@ -272,6 +272,45 @@ export interface CleaningTask {
   deletedAt?: number;
 }
 
+// Plan de lutte contre les nuisibles — PMS, arrêté du 9/05/1995 art. 17.
+// Contrairement aux contrôles quotidiens (huiles, températures, nettoyage),
+// celui-ci est périodique : un passage tous les X jours/semaines/mois.
+
+// Cadence du prochain contrôle — sert à pré-remplir "Prochain contrôle".
+export type PestCadence = 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
+
+// Station du plan de lutte (le "plan" papier : PIÈGE 1 = SAS, PIÈGE 2 = Cuisine…).
+// Capturée comme une liste n° + zone — mêmes infos que le plan, sans carte dessinée.
+export interface PestStation {
+  id: string;
+  number: string;   // n° du piège / appât, ex. "1"
+  zone: string;     // emplacement, ex. "Cuisine", "Réserve"
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Registre de suivi — dératisation / désinsectisation. Une entrée par passage
+// (interne ou prestataire), mappant les colonnes du registre papier.
+export interface PestControlCheck {
+  id: string;
+  timestamp: number;                                              // Date du passage
+  interventionTypes: ('deratisation' | 'desinsectisation')[];     // Type (Déra / Désin)
+  nature: 'preventif' | 'curatif';                                // Préventif / Curatif
+  zones?: string;                                                 // Zones concernées
+  baitLocations?: string;                                         // Localisation appâts / pièges
+  products?: string;                                              // Produits utilisés
+  amm?: string;                                                   // N° AMM
+  findings?: string;                                              // Constats (traces, captures, activité)
+  correctiveAction?: string;                                      // Actions correctives
+  nextCheck?: number;                                             // Prochain contrôle (auto depuis la cadence)
+  // Responsable du passage — mirrors the register's signature column. See OilCheck.operatorName.
+  operatorName?: string;
+  backfilled?: boolean;
+  recordedAt?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CustomActionType {
   id: string;
   label: string;
@@ -336,6 +375,11 @@ export interface AppState {
   fabricationTypes: FabricationType[];
   cleaningChecks: CleaningCheck[];
   cleaningAreas: string[];
+  // Plan de lutte contre les nuisibles (PMS — périodique, pas quotidien).
+  // `pestCadence` undefined = jamais réglé → défaut hebdomadaire dans l'UI.
+  pestControlChecks: PestControlCheck[];
+  pestStations: PestStation[];
+  pestCadence?: PestCadence;
   // Planning de service. Chaque jour est ouvert / service unique / fermé.
   // - closedWeekdays : jours fermés récurrents (getDay() : 0 = dim … 6 = sam).
   //   Aucun contrôle attendu ni compté comme manquant.
