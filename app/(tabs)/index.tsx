@@ -15,12 +15,12 @@ export default function HomeScreen() {
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
 
-  const expiringSoon = useMemo(() => {
-    return [...activeProducts]
-      .filter((p) => getDaysRemaining(p.dlc) <= 1)
-      .sort((a, b) => a.dlc - b.dlc)
-      .slice(0, 5);
-  }, [activeProducts]);
+  // Expirés (days < 0) + dernier jour de consommation (days === 0). Compte réel,
+  // non plafonné — cohérent avec le seuil "périmé" de getStatusColor / alerts.
+  const expiringSoon = useMemo(
+    () => activeProducts.filter((p) => getDaysRemaining(p.dlc) <= 0),
+    [activeProducts]
+  );
 
   const todayCount = useMemo(() => {
     const startOfToday = new Date();

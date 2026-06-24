@@ -36,12 +36,12 @@ describe('getStatusColor', () => {
     jest.useRealTimers();
   });
 
-  it('returns red for expired products', () => {
-    expect(getStatusColor(Date.now() - 1000)).toBe('#EF4444');
+  it('returns red once the limit day has passed', () => {
+    expect(getStatusColor(Date.now() - 24 * 60 * 60 * 1000 - 1000)).toBe('#EF4444');
   });
 
-  it('returns red exactly at DLC', () => {
-    expect(getStatusColor(Date.now())).toBe('#EF4444');
+  it('returns amber on the limit day itself (still valid)', () => {
+    expect(getStatusColor(Date.now())).toBe('#F59E0B');
   });
 
   it('returns amber when 2 days or fewer remain', () => {

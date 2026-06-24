@@ -20,7 +20,7 @@ export function getDaysRemaining(dlc: number): number {
 
 export function getStatusColor(dlc: number): string {
   const days = getDaysRemaining(dlc);
-  if (days <= 0) return '#EF4444';
+  if (days < 0) return '#EF4444';
   if (days <= 2) return '#F59E0B';
   return '#10B981';
 }

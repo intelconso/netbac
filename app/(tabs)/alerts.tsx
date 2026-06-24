@@ -46,8 +46,8 @@ function AlertCard({
         </Text>
       </View>
       <View className="items-end">
-        <Text className={cn('text-xs font-bold', alert.days <= 0 ? 'text-danger' : 'text-alert')}>
-          {alert.days <= 0 ? 'EXPIRÉ' : `J-${alert.days}`}
+        <Text className={cn('text-xs font-bold', alert.days < 0 ? 'text-danger' : 'text-alert')}>
+          {alert.days < 0 ? 'EXPIRÉ' : alert.days === 0 ? 'Auj.' : `J-${alert.days}`}
         </Text>
         <Text className="text-[8px] font-medium text-gray-400 uppercase">{formatDate(alert.dlc)}</Text>
       </View>
@@ -72,8 +72,8 @@ export default function AlertsScreen() {
     .map((p) => ({ ...p, days: getDaysRemaining(p.dlc), bac: bacs.find((b) => b.id === p.bacId) }))
     .sort((a, b) => a.days - b.days);
 
-  const critical = activeAlerts.filter((a) => a.days <= 0);
-  const warning = activeAlerts.filter((a) => a.days > 0 && a.days <= 2);
+  const critical = activeAlerts.filter((a) => a.days < 0);
+  const warning = activeAlerts.filter((a) => a.days >= 0 && a.days <= 2);
   const visibleAlerts = [...critical, ...warning];
 
   const selected = activeAlerts.filter((a) => selectedIds.includes(a.id));
