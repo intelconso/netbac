@@ -12,7 +12,7 @@ import FabricationSection from '../../src/components/controls/FabricationSection
 import CleaningCheckSection from '../../src/components/controls/CleaningCheckSection';
 import ReceptionSection from '../../src/components/controls/ReceptionSection';
 import DailyRemarkSection from '../../src/components/controls/DailyRemarkSection';
-import { isColdUnit } from '../../src/lib/fridgeTemp';
+import { resolveTempUnits } from '../../src/lib/tempUnits';
 import { dayStatus } from '../../src/lib/serviceDays';
 
 // Icône de carte qui se colore avec l'avancement du contrôle : ambre tant que
@@ -36,7 +36,7 @@ function ProgressBar({ progress }: { progress: number }) {
 // sur sa carte.
 export default function TracabiliteScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, storageUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, cleaningAreas, receptions, dailyRemarks, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
   const [openId, setOpenId] = useState<string | null>('oil');
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
@@ -50,7 +50,7 @@ export default function TracabiliteScreen() {
   const oilDoneToday = oilChecks.some((c) => c.timestamp >= startOfToday);
   const oilOpen = openId === 'oil';
 
-  const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
+  const coldUnits = resolveTempUnits({ tempUnits, storageUnits });
   const todayTemp = fridgeTempChecks.filter((c) => c.timestamp >= startOfToday);
   const tempDone = (svc: 'debut' | 'fin') => coldUnits.filter((u) => todayTemp.some((c) => c.unitId === u.id && c.service === svc)).length;
   const debutDone = tempDone('debut');

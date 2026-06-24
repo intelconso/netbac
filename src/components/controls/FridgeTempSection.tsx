@@ -3,7 +3,8 @@ import { View, Text, Pressable, TextInput } from 'react-native';
 import { CheckCircle2, Pencil, Thermometer, XCircle } from 'lucide-react-native';
 import { useActiveStore } from '../../lib/useActive';
 import { cn } from '../../lib/utils';
-import { defaultTemp, isColdUnit, isTempConform, targetLabel } from '../../lib/fridgeTemp';
+import { defaultTemp, isTempConform, targetLabel } from '../../lib/fridgeTemp';
+import { resolveTempUnits } from '../../lib/tempUnits';
 import { lastControllerName } from '../../lib/controller';
 import { isClosedDay, isSingleServiceDay } from '../../lib/serviceDays';
 import { format } from 'date-fns';
@@ -20,8 +21,8 @@ const SERVICES = [
 // réglementaire du type d'enceinte ; action corrective exigée en cas d'écart.
 export default function FridgeTempSection() {
   const store = useActiveStore();
-  const { storageUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck, closedWeekdays, singleServiceWeekdays, dayOverrides } = store;
-  const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
+  const { storageUnits, tempUnits, fridgeTempChecks, addFridgeTempCheck, updateFridgeTempCheck, closedWeekdays, singleServiceWeekdays, dayOverrides } = store;
+  const coldUnits = resolveTempUnits({ tempUnits, storageUnits });
   const schedule = { closedWeekdays, singleServiceWeekdays, dayOverrides };
 
   const [service, setService] = useState<'debut' | 'fin'>('debut');
@@ -90,8 +91,11 @@ export default function FridgeTempSection() {
 
   const saveUnit = (unitId: string) => {
     const unit = coldUnits.find((u) => u.id === unitId);
-    const temp = parseTemp(temps[unitId] ?? '');
-    if (!unit || temp === null || !controller.trim()) return;
+    if (!unit) return;
+    // Honore le défaut pré-rempli même non édité (sinon temps[unitId] reste
+    // undefined et OK ne sauvegarde rien) — même fallback que `draft` au rendu.
+    const temp = parseTemp(temps[unitId] ?? defaultTemp(unit.type));
+    if (temp === null || !controller.trim()) return;
     const conform = isTempConform(unit.type, temp);
     const correctiveAction = (actions[unitId] ?? '').trim();
     if (!conform && !correctiveAction) return; // action corrective requise
@@ -127,7 +131,7 @@ export default function FridgeTempSection() {
     return (
       <View className="bg-gray-50 p-4 rounded-2xl">
         <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
-          Aucune enceinte frigorifique — ajoutez un frigo, congélateur ou saladette dans Paramètres → Structure
+          Aucune zone de température — ajoutez-en une dans Paramètres → Personnalisation → Zones de température
         </Text>
       </View>
     );

@@ -16,6 +16,7 @@ const RETRY_MS = 30_000;
 const CLOUD_KEYS = [
   'zones',
   'storageUnits',
+  'tempUnits',
   'shelves',
   'bacs',
   'products',
@@ -150,6 +151,7 @@ export function startSync(uid: string): void {
     const dataKey = JSON.stringify({
       zones: state.zones,
       storageUnits: state.storageUnits,
+      tempUnits: state.tempUnits,
       shelves: state.shelves,
       bacs: state.bacs,
       products: state.products,

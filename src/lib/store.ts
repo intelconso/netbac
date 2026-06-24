@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, Product, ReceptionCheck, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
 import { randomId } from './utils';
+import { deriveColdUnits } from './tempUnits';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
 
 interface StoreActions {
@@ -47,6 +48,9 @@ interface StoreActions {
   deleteCleaningCheck: (id: string) => void;
   addCleaningArea: (name: string) => void;
   deleteCleaningArea: (name: string) => void;
+  addTempUnit: (name: string, type: TempUnit['type']) => void;
+  updateTempUnit: (id: string, patch: Partial<Pick<TempUnit, 'name' | 'type'>>) => void;
+  deleteTempUnit: (id: string) => void;
   setWeekdayStatus: (weekday: number, status: DayServiceStatus) => void;
   setDayOverride: (date: number, status: DayServiceStatus) => void;
   removeDayOverride: (date: number) => void;
@@ -428,6 +432,31 @@ export const useStore = create<AppState & StoreActions>()(
         cleaningAreas: state.cleaningAreas.filter((a) => a !== name),
       })),
 
+      // Enceintes du relevé de température — modèle entité (id + modifiedAt +
+      // tombstone) pour que renommages/suppressions se propagent entre appareils.
+      // Premier édit : on fige la liste depuis la structure (`deriveColdUnits`),
+      // ensuite elle est indépendante. Ids réutilisés → historique préservé.
+      addTempUnit: (name, type) => set((state) => {
+        const trimmed = name.trim();
+        if (!trimmed) return {};
+        const base = state.tempUnits ?? deriveColdUnits(state.storageUnits);
+        return { tempUnits: [...base, { id: randomId(), name: trimmed, type, modifiedAt: Date.now() }] };
+      }),
+
+      updateTempUnit: (id, patch) => set((state) => {
+        const base = state.tempUnits ?? deriveColdUnits(state.storageUnits);
+        return {
+          tempUnits: base.map((u) => (u.id === id
+            ? { ...u, ...patch, ...(patch.name !== undefined ? { name: patch.name.trim() } : {}), modifiedAt: Date.now() }
+            : u)),
+        };
+      }),
+
+      deleteTempUnit: (id) => set((state) => {
+        const base = state.tempUnits ?? deriveColdUnits(state.storageUnits);
+        return { tempUnits: base.map((u) => (u.id === id ? tomb(u) : u)) };
+      }),
+
       // Planning hebdomadaire — un jour est ouvert / unique / fermé. Les deux
       // listes restent mutuellement exclusives. Local-authoritative (voir applyCloudState).
       setWeekdayStatus: (weekday, status) => set((state) => {
@@ -572,6 +601,11 @@ export const useStore = create<AppState & StoreActions>()(
           return {
             zones: mergeNewer(state.zones, cloud.zones),
             storageUnits: mergeNewer(state.storageUnits, cloud.storageUnits),
+            // Garde `undefined` (= reflète la structure) tant que le cloud n'a pas
+            // de liste figée ; sinon fusion newer-wins comme les autres entités.
+            tempUnits: cloud.tempUnits !== undefined
+              ? mergeNewer(state.tempUnits ?? [], cloud.tempUnits)
+              : state.tempUnits,
             shelves: mergeNewer(state.shelves, cloud.shelves),
             bacs: mergeNewer(state.bacs, cloud.bacs),
             products: mergeNewer(state.products, cloud.products),
@@ -610,6 +644,7 @@ export const useStore = create<AppState & StoreActions>()(
       partialize: (state): AppState => ({
         zones: state.zones,
         storageUnits: state.storageUnits,
+        tempUnits: state.tempUnits,
         shelves: state.shelves,
         bacs: state.bacs,
         products: state.products,

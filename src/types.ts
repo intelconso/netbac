@@ -17,6 +17,18 @@ export interface StorageUnit {
   deletedAt?: number;
 }
 
+// Enceinte du relevé de température. Initialisée depuis les enceintes froides de
+// la structure, puis gérée indépendamment (renommage / suppression / ajout) dans
+// Paramètres → Personnalisation. `type` réutilise les types froids de StorageUnit
+// pour dériver la plage réglementaire (voir fridgeTemp.ts).
+export interface TempUnit {
+  id: string;
+  name: string;
+  type: StorageUnit['type'];
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface Shelf {
   id: string;
   unitId: string;
@@ -309,6 +321,10 @@ export interface DayOverride {
 export interface AppState {
   zones: Zone[];
   storageUnits: StorageUnit[];
+  // Enceintes du relevé de température. `undefined` = jamais personnalisé : la
+  // liste reflète alors les enceintes froides de la structure (voir tempUnits.ts).
+  // Au premier ajout/renommage/suppression, elle est figée puis indépendante.
+  tempUnits?: TempUnit[];
   shelves: Shelf[];
   bacs: Bac[];
   products: Product[];

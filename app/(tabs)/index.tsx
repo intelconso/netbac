@@ -4,14 +4,14 @@ import { useRouter } from 'expo-router';
 import { Scan, Plus, AlertTriangle, ClipboardCheck, FileText, Eye } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
-import { isColdUnit } from '../../src/lib/fridgeTemp';
+import { resolveTempUnits } from '../../src/lib/tempUnits';
 import { dayStatus } from '../../src/lib/serviceDays';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
+  const { products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
 
@@ -39,7 +39,7 @@ export default function HomeScreen() {
     if (status === 'closed') return 0;
     let pending = 0;
     if (!oilChecks.some((c) => c.timestamp >= t0)) pending += 1;
-    const coldUnits = storageUnits.filter((u) => isColdUnit(u.type));
+    const coldUnits = resolveTempUnits({ tempUnits, storageUnits });
     const tempToday = fridgeTempChecks.filter((c) => c.timestamp >= t0);
     // Service unique : un relevé par enceinte suffit ; sinon début + fin.
     const tempComplete = coldUnits.length > 0 && (status === 'single'
@@ -53,7 +53,7 @@ export default function HomeScreen() {
     );
     if (cleaningAreas.length > 0 && !cleaningComplete) pending += 1;
     return pending;
-  }, [oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, closedWeekdays, singleServiceWeekdays, dayOverrides]);
+  }, [oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides]);
 
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });

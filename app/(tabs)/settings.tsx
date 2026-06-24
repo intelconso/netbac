@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, ChevronLeft, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, ChevronLeft, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer } from 'lucide-react-native';
 import { format, startOfMonth, endOfMonth, getDay, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { signOut } from '../../src/lib/firebase';
@@ -20,6 +20,16 @@ import SyncRow from '../../src/components/SyncRow';
 import FabricationTypesManager from '../../src/components/FabricationTypesManager';
 import { WEEKDAYS, STATUS_LABELS, startOfDayMs } from '../../src/lib/serviceDays';
 import { DayServiceStatus } from '../../src/types';
+import { resolveTempUnits } from '../../src/lib/tempUnits';
+import { targetLabel } from '../../src/lib/fridgeTemp';
+
+// Types d'enceintes froides proposés pour le relevé de température (plage
+// réglementaire dérivée du type — voir fridgeTemp.ts).
+const COLD_TYPES: { value: StorageUnit['type']; label: string }[] = [
+  { value: 'frigo', label: 'Frigo' },
+  { value: 'saladette', label: 'Saladette' },
+  { value: 'congelateur', label: 'Congélateur' },
+];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -45,11 +55,19 @@ export default function SettingsScreen() {
   const setWeekdayStatus = useStore((s) => s.setWeekdayStatus);
   const setDayOverride = useStore((s) => s.setDayOverride);
   const removeDayOverride = useStore((s) => s.removeDayOverride);
+  const tempUnitsRaw = useStore((s) => s.tempUnits);
+  const addTempUnit = useStore((s) => s.addTempUnit);
+  const updateTempUnit = useStore((s) => s.updateTempUnit);
+  const deleteTempUnit = useStore((s) => s.deleteTempUnit);
+  const tempUnits = resolveTempUnits({ tempUnits: tempUnitsRaw, storageUnits });
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'closedDays'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [newCleaningArea, setNewCleaningArea] = useState('');
+  const [newTempName, setNewTempName] = useState('');
+  const [newTempType, setNewTempType] = useState<StorageUnit['type']>('frigo');
+  const [editingTemp, setEditingTemp] = useState<{ id: string; value: string } | null>(null);
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideMonth, setOverrideMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [overridePicked, setOverridePicked] = useState<number | null>(null);
@@ -71,7 +89,7 @@ export default function SettingsScreen() {
           setDrillDown({});
           return true;
         }
-        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'closedDays') {
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays') {
           setSection('custom');
           return true;
         }
@@ -141,11 +159,12 @@ export default function SettingsScreen() {
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
-  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'closedDays'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
     { id: 'cleaningAreas', label: 'Zones de nettoyage', description: 'Zones du contrôle nettoyage quotidien', icon: Sparkles },
+    { id: 'tempUnits', label: 'Zones de température', description: 'Zones du relevé de température quotidien', icon: Thermometer },
     { id: 'closedDays', label: 'Jours & services', description: 'Fermetures, services uniques, exceptions', icon: CalendarOff },
   ];
 
@@ -411,6 +430,120 @@ export default function SettingsScreen() {
           </View>
         </Modal>
       </ScrollView>
+    );
+  }
+
+  if (section === 'tempUnits') {
+    const handleAddTemp = () => {
+      if (!newTempName.trim()) return;
+      addTempUnit(newTempName, newTempType);
+      setNewTempName('');
+    };
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
+        <View className="mb-6 flex-row items-center gap-3">
+          <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
+          </Pressable>
+          <View>
+            <Text className="text-sm font-black text-gray-900 uppercase">Zones de température</Text>
+            <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">Relevé de température quotidien</Text>
+          </View>
+        </View>
+
+        <View className="bg-white p-4 rounded-2xl border border-gray-100 mb-4">
+          <Text className="text-[11px] font-medium text-gray-500">
+            Initialisée depuis les enceintes froides de votre <Text className="font-bold">Structure</Text>. Vous pouvez ensuite l'ajuster librement ici — renommer, supprimer ou ajouter — sans toucher à la structure.
+          </Text>
+        </View>
+
+        <View className="bg-white rounded-2xl border border-gray-100 p-2 mb-4 gap-2">
+          <TextInput
+            value={newTempName}
+            onChangeText={setNewTempName}
+            placeholder="ex: Frigo bar, Chambre froide..."
+            className="px-3 py-2 text-sm font-bold text-gray-900"
+            onSubmitEditing={handleAddTemp}
+            returnKeyType="done"
+          />
+          <View className="flex-row gap-2 items-center">
+            <View className="flex-1 flex-row p-1 bg-gray-100 rounded-xl gap-1">
+              {COLD_TYPES.map((t) => {
+                const active = newTempType === t.value;
+                return (
+                  <Pressable key={t.value} onPress={() => setNewTempType(t.value)} className={cn('flex-1 py-2 rounded-lg items-center', active && 'bg-primary')}>
+                    <Text className={cn('text-[9px] font-black uppercase tracking-widest', active ? 'text-white' : 'text-gray-400')}>{t.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable
+              onPress={handleAddTemp}
+              disabled={!newTempName.trim()}
+              className={cn('w-10 h-10 rounded-xl items-center justify-center', newTempName.trim() ? 'bg-primary' : 'bg-gray-100')}
+            >
+              <Plus size={18} color={newTempName.trim() ? '#fff' : '#9CA3AF'} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View className="gap-2">
+          {tempUnits.map((unit) => {
+            const isEditing = editingTemp?.id === unit.id;
+            return (
+              <View key={unit.id} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-2">
+                {isEditing ? (
+                  <>
+                    <TextInput
+                      value={editingTemp!.value}
+                      onChangeText={(v) => setEditingTemp({ id: unit.id, value: v })}
+                      autoFocus
+                      className="flex-1 px-3 py-2 bg-gray-50 rounded-xl text-sm font-bold text-gray-900"
+                    />
+                    <Pressable
+                      onPress={() => {
+                        if (editingTemp!.value.trim() && editingTemp!.value.trim() !== unit.name) {
+                          updateTempUnit(unit.id, { name: editingTemp!.value });
+                        }
+                        setEditingTemp(null);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-primary items-center justify-center"
+                    >
+                      <Check size={18} color="#fff" />
+                    </Pressable>
+                    <Pressable onPress={() => setEditingTemp(null)} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+                      <X size={18} color="#9CA3AF" />
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center">
+                      <Thermometer size={18} color="#10B981" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-black text-gray-900 uppercase">{unit.name}</Text>
+                      <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{targetLabel(unit.type)}</Text>
+                    </View>
+                    <Pressable onPress={() => setEditingTemp({ id: unit.id, value: unit.name })} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+                      <Edit2 size={16} color="#9CA3AF" />
+                    </Pressable>
+                    <Pressable onPress={() => deleteTempUnit(unit.id)} className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
+                      <Trash2 size={16} color="#EF4444" />
+                    </Pressable>
+                  </>
+                )}
+              </View>
+            );
+          })}
+          {tempUnits.length === 0 && (
+            <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center">
+              <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Aucune enceinte — ajoutez-en une</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
