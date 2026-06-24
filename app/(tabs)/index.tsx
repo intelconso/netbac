@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useMemo, useRef, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Scan, Plus, AlertTriangle, ClipboardCheck, FileText, Eye } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
@@ -58,6 +58,21 @@ export default function HomeScreen() {
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
 
+  // Gyrophare : la carte Traçabilité "respire" tant qu'un des 3 contrôles du jour
+  // (huiles, nettoyage, températures) reste à faire ; se fige une fois tout fait.
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (pendingControls === 0) { pulse.setValue(1); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.4, duration: 650, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pendingControls, pulse]);
+
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 96, gap: 24 }}>
       {/* Header */}
@@ -100,7 +115,8 @@ export default function HomeScreen() {
         </View>
       </Pressable>
 
-      {/* Traçabilité — daily HACCP controls */}
+      {/* Traçabilité — daily HACCP controls (gyrophare tant que non terminé) */}
+      <Animated.View style={{ opacity: pulse }}>
       <Pressable
         onPress={() => router.push('/(tabs)/tracabilite' as any)}
         className={cn('p-5 rounded-3xl', pendingControls === 0 && 'border border-gray-100')}
@@ -124,6 +140,7 @@ export default function HomeScreen() {
           {pendingControls > 0 && <Text className="text-3xl font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{pendingControls}</Text>}
         </View>
       </Pressable>
+      </Animated.View>
 
       {/* Stats */}
       <View className="flex-row gap-4">
