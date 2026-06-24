@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, ChevronLeft, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer } from 'lucide-react-native';
 import { format, startOfMonth, endOfMonth, getDay, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { signOut } from '../../src/lib/firebase';
@@ -59,6 +59,7 @@ export default function SettingsScreen() {
   const addTempUnit = useStore((s) => s.addTempUnit);
   const updateTempUnit = useStore((s) => s.updateTempUnit);
   const deleteTempUnit = useStore((s) => s.deleteTempUnit);
+  const moveTempUnit = useStore((s) => s.moveTempUnit);
   const tempUnits = resolveTempUnits({ tempUnits: tempUnitsRaw, storageUnits });
 
   const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays'>('menu');
@@ -454,7 +455,7 @@ export default function SettingsScreen() {
 
         <View className="bg-white p-4 rounded-2xl border border-gray-100 mb-4">
           <Text className="text-[11px] font-medium text-gray-500">
-            Initialisée depuis les enceintes froides de votre <Text className="font-bold">Structure</Text>. Vous pouvez ensuite l'ajuster librement ici — renommer, supprimer ou ajouter — sans toucher à la structure.
+            Initialisée depuis les enceintes froides de votre <Text className="font-bold">Structure</Text>. Vous pouvez ensuite l'ajuster librement ici — renommer, supprimer ou ajouter — sans toucher à la structure. L'<Text className="font-bold">ordre</Text> ci-dessous est l'ordre de saisie du relevé quotidien.
           </Text>
         </View>
 
@@ -489,7 +490,7 @@ export default function SettingsScreen() {
         </View>
 
         <View className="gap-2">
-          {tempUnits.map((unit) => {
+          {tempUnits.map((unit, idx) => {
             const isEditing = editingTemp?.id === unit.id;
             return (
               <View key={unit.id} className="bg-white p-3 rounded-2xl border border-gray-100 flex-row items-center gap-2">
@@ -524,6 +525,22 @@ export default function SettingsScreen() {
                     <View className="flex-1">
                       <Text className="text-sm font-black text-gray-900 uppercase">{unit.name}</Text>
                       <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{targetLabel(unit.type)}</Text>
+                    </View>
+                    <View className="rounded-xl bg-gray-50 overflow-hidden">
+                      <Pressable
+                        onPress={() => moveTempUnit(unit.id, 'up')}
+                        disabled={idx === 0}
+                        className={cn('w-8 h-5 items-center justify-center', idx === 0 && 'opacity-30')}
+                      >
+                        <ChevronUp size={14} color="#6B7280" />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => moveTempUnit(unit.id, 'down')}
+                        disabled={idx === tempUnits.length - 1}
+                        className={cn('w-8 h-5 items-center justify-center', idx === tempUnits.length - 1 && 'opacity-30')}
+                      >
+                        <ChevronDown size={14} color="#6B7280" />
+                      </Pressable>
                     </View>
                     <Pressable onPress={() => setEditingTemp({ id: unit.id, value: unit.name })} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
                       <Edit2 size={16} color="#9CA3AF" />

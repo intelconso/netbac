@@ -51,6 +51,7 @@ interface StoreActions {
   addTempUnit: (name: string, type: TempUnit['type']) => void;
   updateTempUnit: (id: string, patch: Partial<Pick<TempUnit, 'name' | 'type'>>) => void;
   deleteTempUnit: (id: string) => void;
+  moveTempUnit: (id: string, dir: 'up' | 'down') => void;
   setWeekdayStatus: (weekday: number, status: DayServiceStatus) => void;
   setDayOverride: (date: number, status: DayServiceStatus) => void;
   removeDayOverride: (date: number) => void;
@@ -455,6 +456,21 @@ export const useStore = create<AppState & StoreActions>()(
       deleteTempUnit: (id) => set((state) => {
         const base = state.tempUnits ?? deriveColdUnits(state.storageUnits);
         return { tempUnits: base.map((u) => (u.id === id ? tomb(u) : u)) };
+      }),
+
+      // Réordonne l'ordre de saisie (le "chemin habituel" du relevé). On échange
+      // la position de deux enceintes vivantes voisines ; les tombstones gardent
+      // leur place (filtrées à la lecture). L'ordre = ordre du tableau.
+      moveTempUnit: (id, dir) => set((state) => {
+        const base = (state.tempUnits ?? deriveColdUnits(state.storageUnits)).slice();
+        const live = base.map((u, i) => ({ u, i })).filter((x) => !x.u.deletedAt);
+        const pos = live.findIndex((x) => x.u.id === id);
+        if (pos < 0) return {};
+        const target = dir === 'up' ? pos - 1 : pos + 1;
+        if (target < 0 || target >= live.length) return {};
+        const a = live[pos].i, b = live[target].i;
+        [base[a], base[b]] = [base[b], base[a]];
+        return { tempUnits: base };
       }),
 
       // Planning hebdomadaire — un jour est ouvert / unique / fermé. Les deux

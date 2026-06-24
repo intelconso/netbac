@@ -34,6 +34,9 @@ export default function FridgeTempSection() {
   const [temps, setTemps] = useState<Record<string, string>>({});
   const [actions, setActions] = useState<Record<string, string>>({});
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  // Saisie pas-à-pas : on affiche une enceinte à la fois (le "chemin habituel").
+  // Guidé mais pas verrouillé — on peut revenir en arrière ou sauter via les points.
+  const [stepIndex, setStepIndex] = useState(0);
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
   const dayStart = backfillDay ?? startOfToday;
@@ -127,6 +130,16 @@ export default function FridgeTempSection() {
     setEditingUnitId(null);
   };
 
+  // Navigation du stepper. `goTo` borne l'index ; `saveAndAdvance` enchaîne sur
+  // l'enceinte suivante après une sauvegarde. `firstPending` = première enceinte
+  // non encore relevée pour un service (point de reprise naturel).
+  const goTo = (i: number) => setStepIndex(Math.max(0, Math.min(i, coldUnits.length - 1)));
+  const saveAndAdvance = (unitId: string) => { saveUnit(unitId); setStepIndex((i) => Math.min(i + 1, coldUnits.length - 1)); };
+  const firstPending = (svc: 'debut' | 'fin') => {
+    const idx = coldUnits.findIndex((u) => !checksFor(u.id, svc));
+    return idx < 0 ? 0 : idx;
+  };
+
   if (coldUnits.length === 0) {
     return (
       <View className="bg-gray-50 p-4 rounded-2xl">
@@ -136,6 +149,9 @@ export default function FridgeTempSection() {
       </View>
     );
   }
+
+  const safeIndex = Math.min(stepIndex, coldUnits.length - 1);
+  const current = coldUnits[safeIndex];
 
   return (
     <View className="gap-4">
@@ -170,7 +186,7 @@ export default function FridgeTempSection() {
 
       <View className="flex-row p-1 bg-gray-100 rounded-2xl">
         {SERVICES.map((s) => (
-          <Pressable key={s.id} onPress={() => { setService(s.id); setEditingUnitId(null); }} className={cn('flex-1 py-2.5 rounded-xl items-center', service === s.id && 'bg-white')}>
+          <Pressable key={s.id} onPress={() => { setService(s.id); setEditingUnitId(null); setStepIndex(firstPending(s.id)); }} className={cn('flex-1 py-2.5 rounded-xl items-center', service === s.id && 'bg-white')}>
             <Text className={cn('text-[9px] font-black uppercase tracking-widest', service === s.id ? 'text-primary' : 'text-gray-400')}>
               {s.label} ({doneCount(s.id)}/{coldUnits.length})
             </Text>
@@ -178,102 +194,143 @@ export default function FridgeTempSection() {
         ))}
       </View>
 
-      <View className="gap-3">
-        {coldUnits.map((unit) => {
-          const existing = checksFor(unit.id, service);
-          const editing = editingUnitId === unit.id;
-          // Pré-rempli avec un relevé conforme typique — à ajuster, pas à ressaisir.
-          const draft = temps[unit.id] ?? defaultTemp(unit.type);
-          const parsed = parseTemp(draft);
-          const draftConform = parsed === null ? null : isTempConform(unit.type, parsed);
-          const negative = draft.trim().startsWith('-');
-          const canSave = parsed !== null && !!controller.trim() && !(draftConform === false && !(actions[unit.id] ?? '').trim());
-
-          if (existing && !editing) {
-            return (
-              <View key={unit.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center justify-between">
-                <View className="flex-row items-center gap-3 flex-1">
-                  <View className={cn('w-10 h-10 rounded-xl items-center justify-center', existing.conform ? 'bg-success/10' : 'bg-danger/10')}>
-                    {existing.conform
-                      ? <CheckCircle2 size={18} color="#10B981" />
-                      : <XCircle size={18} color="#EF4444" />}
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-xs font-black text-gray-900 uppercase">{unit.name}</Text>
-                    <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">
-                      {format(new Date(existing.timestamp), 'HH:mm', { locale: fr })}
-                      {existing.correctiveAction ? ` • ${existing.correctiveAction}` : ''}
-                    </Text>
-                  </View>
-                </View>
-                <Text className={cn('text-sm font-black mr-3', existing.conform ? 'text-success' : 'text-danger')}>
-                  {existing.temperature}°C
-                </Text>
-                <Pressable onPress={() => startEdit(unit.id)} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
-                  <Pencil size={14} color="#9CA3AF" />
-                </Pressable>
-              </View>
-            );
-          }
-
+      {/* Fil des enceintes — un point par enceinte, vert = relevée, cliquable pour sauter */}
+      <View className="flex-row items-center justify-center flex-wrap gap-2">
+        {coldUnits.map((u, i) => {
+          const done = !!checksFor(u.id, service);
+          const isCur = i === safeIndex;
           return (
-            <View key={unit.id} className="bg-white p-4 rounded-2xl border border-gray-100 gap-3">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-xs font-black text-gray-900 uppercase">{unit.name}</Text>
-                  <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Cible : {targetLabel(unit.type)}</Text>
-                </View>
-                <Thermometer size={16} color="#9CA3AF" />
-              </View>
-              <View className="gap-2">
-                <View className="flex-row items-center gap-2">
-                  <Pressable
-                    onPress={() => toggleSign(unit.id, draft)}
-                    className={cn('w-12 h-12 rounded-xl items-center justify-center border', negative ? 'bg-primary border-primary' : 'bg-gray-50 border-gray-100')}
-                  >
-                    <Text className={cn('text-lg font-black', negative ? 'text-white' : 'text-gray-400')}>±</Text>
-                  </Pressable>
-                  <TextInput
-                    value={draft}
-                    onChangeText={(v) => setTemp(unit.id, v)}
-                    placeholder="—"
-                    keyboardType="decimal-pad"
-                    className={cn('flex-1 p-3 bg-gray-50 rounded-xl text-2xl font-black text-center', draftConform === false && 'border border-danger')}
-                  />
-                  <Text className="text-xs font-black text-gray-400">°C</Text>
-                </View>
-                <View className="flex-row gap-2">
-                  <Pressable onPress={() => stepTemp(unit.id, draft, -0.5)} className="flex-1 py-3 bg-gray-50 rounded-xl items-center border border-gray-100">
-                    <Text className="text-base font-black text-gray-600">− 0.5</Text>
-                  </Pressable>
-                  <Pressable onPress={() => stepTemp(unit.id, draft, 0.5)} className="flex-1 py-3 bg-gray-50 rounded-xl items-center border border-gray-100">
-                    <Text className="text-base font-black text-gray-600">+ 0.5</Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={!canSave}
-                    onPress={() => saveUnit(unit.id)}
-                    className={cn('px-5 py-3 bg-primary rounded-xl items-center justify-center', !canSave && 'opacity-40')}
-                  >
-                    <Text className="text-[10px] font-black text-white uppercase">{editing ? 'Modifier' : 'OK'}</Text>
-                  </Pressable>
-                </View>
-              </View>
-              {draftConform === false && (
-                <View className="gap-2">
-                  <Text className="text-[9px] font-black text-danger uppercase tracking-widest">
-                    Hors plage — action corrective requise
-                  </Text>
-                  <TextInput
-                    value={actions[unit.id] ?? ''}
-                    onChangeText={(v) => setAction(unit.id, v)}
-                    placeholder="Action corrective (ex. produits déplacés, technicien appelé)"
-                    className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
-                  />
-                </View>
+            <Pressable
+              key={u.id}
+              onPress={() => { setEditingUnitId(null); goTo(i); }}
+              hitSlop={6}
+              className={cn(
+                'rounded-full',
+                isCur ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5',
+                done ? 'bg-success' : isCur ? 'bg-primary' : 'bg-gray-200',
+                isCur && !done && 'border-2 border-primary',
               )}
-            </View>
+            />
           );
         })}
+      </View>
+      <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-center -mt-1">
+        Enceinte {safeIndex + 1} / {coldUnits.length}
+      </Text>
+
+      {(() => {
+        const unit = current;
+        const existing = checksFor(unit.id, service);
+        const editing = editingUnitId === unit.id;
+        // Pré-rempli avec un relevé conforme typique — à ajuster, pas à ressaisir.
+        const draft = temps[unit.id] ?? defaultTemp(unit.type);
+        const parsed = parseTemp(draft);
+        const draftConform = parsed === null ? null : isTempConform(unit.type, parsed);
+        const negative = draft.trim().startsWith('-');
+        const canSave = parsed !== null && !!controller.trim() && !(draftConform === false && !(actions[unit.id] ?? '').trim());
+
+        if (existing && !editing) {
+          return (
+            <View className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center justify-between">
+              <View className="flex-row items-center gap-3 flex-1">
+                <View className={cn('w-10 h-10 rounded-xl items-center justify-center', existing.conform ? 'bg-success/10' : 'bg-danger/10')}>
+                  {existing.conform
+                    ? <CheckCircle2 size={18} color="#10B981" />
+                    : <XCircle size={18} color="#EF4444" />}
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-black text-gray-900 uppercase">{unit.name}</Text>
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">
+                    {format(new Date(existing.timestamp), 'HH:mm', { locale: fr })}
+                    {existing.correctiveAction ? ` • ${existing.correctiveAction}` : ''}
+                  </Text>
+                </View>
+              </View>
+              <Text className={cn('text-sm font-black mr-3', existing.conform ? 'text-success' : 'text-danger')}>
+                {existing.temperature}°C
+              </Text>
+              <Pressable onPress={() => startEdit(unit.id)} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
+                <Pencil size={14} color="#9CA3AF" />
+              </Pressable>
+            </View>
+          );
+        }
+
+        return (
+          <View className="bg-white p-4 rounded-2xl border border-gray-100 gap-3">
+            <View className="flex-row items-center justify-between">
+              <View>
+                <Text className="text-xs font-black text-gray-900 uppercase">{unit.name}</Text>
+                <Text className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Cible : {targetLabel(unit.type)}</Text>
+              </View>
+              <Thermometer size={16} color="#9CA3AF" />
+            </View>
+            <View className="gap-2">
+              <View className="flex-row items-center gap-2">
+                <Pressable
+                  onPress={() => toggleSign(unit.id, draft)}
+                  className={cn('w-12 h-12 rounded-xl items-center justify-center border', negative ? 'bg-primary border-primary' : 'bg-gray-50 border-gray-100')}
+                >
+                  <Text className={cn('text-lg font-black', negative ? 'text-white' : 'text-gray-400')}>±</Text>
+                </Pressable>
+                <TextInput
+                  value={draft}
+                  onChangeText={(v) => setTemp(unit.id, v)}
+                  placeholder="—"
+                  keyboardType="decimal-pad"
+                  className={cn('flex-1 p-3 bg-gray-50 rounded-xl text-2xl font-black text-center', draftConform === false && 'border border-danger')}
+                />
+                <Text className="text-xs font-black text-gray-400">°C</Text>
+              </View>
+              <View className="flex-row gap-2">
+                <Pressable onPress={() => stepTemp(unit.id, draft, -0.5)} className="flex-1 py-3 bg-gray-50 rounded-xl items-center border border-gray-100">
+                  <Text className="text-base font-black text-gray-600">− 0.5</Text>
+                </Pressable>
+                <Pressable onPress={() => stepTemp(unit.id, draft, 0.5)} className="flex-1 py-3 bg-gray-50 rounded-xl items-center border border-gray-100">
+                  <Text className="text-base font-black text-gray-600">+ 0.5</Text>
+                </Pressable>
+                <Pressable
+                  disabled={!canSave}
+                  onPress={() => saveAndAdvance(unit.id)}
+                  className={cn('px-5 py-3 bg-primary rounded-xl items-center justify-center', !canSave && 'opacity-40')}
+                >
+                  <Text className="text-[10px] font-black text-white uppercase">{editing ? 'Modifier' : 'OK'}</Text>
+                </Pressable>
+              </View>
+            </View>
+            {draftConform === false && (
+              <View className="gap-2">
+                <Text className="text-[9px] font-black text-danger uppercase tracking-widest">
+                  Hors plage — action corrective requise
+                </Text>
+                <TextInput
+                  value={actions[unit.id] ?? ''}
+                  onChangeText={(v) => setAction(unit.id, v)}
+                  placeholder="Action corrective (ex. produits déplacés, technicien appelé)"
+                  className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
+                />
+              </View>
+            )}
+          </View>
+        );
+      })()}
+
+      {/* Navigation pas-à-pas — guidé mais libre (revenir / sauter) */}
+      <View className="flex-row gap-2">
+        <Pressable
+          onPress={() => { setEditingUnitId(null); goTo(safeIndex - 1); }}
+          disabled={safeIndex === 0}
+          className={cn('flex-1 py-3 rounded-xl items-center border border-gray-100 bg-gray-50', safeIndex === 0 && 'opacity-30')}
+        >
+          <Text className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Précédent</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => { setEditingUnitId(null); goTo(safeIndex + 1); }}
+          disabled={safeIndex >= coldUnits.length - 1}
+          className={cn('flex-1 py-3 rounded-xl items-center border border-gray-100 bg-gray-50', safeIndex >= coldUnits.length - 1 && 'opacity-30')}
+        >
+          <Text className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Suivant</Text>
+        </Pressable>
       </View>
 
       {!backfillDay && missedDays.length > 0 && (
