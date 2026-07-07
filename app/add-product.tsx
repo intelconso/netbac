@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Image
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft, Camera, ImagePlus, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadProductImage } from '../src/lib/cloudinary';
+import { persistCapturedPhoto, processPhotoQueue } from '../src/lib/photoQueue';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
@@ -19,7 +19,7 @@ const SUGGESTIONS = ['Poulet blanc', 'Escalope', 'Poulet rôti', 'Aiguillettes',
 export default function AddProductScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string; zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, products, user, productUnits: UNITS, customActionTypes, defaultActionTypeStates } = useActiveStore();
+  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, enqueuePendingPhoto, products, user, productUnits: UNITS, customActionTypes, defaultActionTypeStates } = useActiveStore();
   const availableActionTypes = getAvailableActionTypes({ customActionTypes, defaultActionTypeStates });
 
   const editMode = params.editMode === 'true';
@@ -49,13 +49,19 @@ export default function AddProductScreen() {
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calMonth, setCalMonth] = useState(() => startOfMonth(new Date(dlc)));
+  // `photoUrl` = an already-uploaded remote URL (only in edit mode). `localPhotoPath`
+  // = a freshly captured local file awaiting upload. A new capture replaces the
+  // remote one; on submit the local file is queued and uploaded (now if online,
+  // later on reconnect). Offline-first: capture never needs the network.
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(existingProduct?.photoUrl);
-  const [photoUploading, setPhotoUploading] = useState(false);
+  const [localPhotoPath, setLocalPhotoPath] = useState<string | undefined>();
+  const [photoProcessing, setPhotoProcessing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const photoPreviewUri = localPhotoPath ?? photoUrl;
 
-  // Pick from camera or gallery → compress + upload to Cloudinary immediately,
-  // so the URL is ready by the time the user submits. Upload runs while they
-  // fill the rest of the form. Failure is non-blocking: photo is optional.
+  // Pick from camera or gallery → compress + persist locally (no upload here).
+  // The actual Cloudinary upload is deferred to the queue after save, so this
+  // works fully offline.
   const handlePickPhoto = async (source: 'camera' | 'library') => {
     setPhotoError(null);
     try {
@@ -67,13 +73,14 @@ export default function AddProductScreen() {
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
       if (result.canceled || !result.assets?.[0]) return;
-      setPhotoUploading(true);
-      const url = await uploadProductImage(result.assets[0].uri);
-      setPhotoUrl(url);
+      setPhotoProcessing(true);
+      const path = await persistCapturedPhoto(result.assets[0].uri);
+      setLocalPhotoPath(path);
+      setPhotoUrl(undefined);
     } catch (e: any) {
-      setPhotoError(e?.message ?? "Échec de l'envoi de la photo.");
+      setPhotoError(e?.message ?? "Échec de l'enregistrement de la photo.");
     } finally {
-      setPhotoUploading(false);
+      setPhotoProcessing(false);
     }
   };
 
@@ -148,8 +155,15 @@ export default function AddProductScreen() {
     // Assigned unconditionally so clearing the photo on edit actually removes it
     // (undefined is stripped before the cloud push and reads as absent locally).
     productData.photoUrl = photoUrl;
+    let savedId: string | undefined = params.productId;
     if (editMode && params.productId) updateProduct(params.productId, productData);
-    else addProduct(productData);
+    else savedId = addProduct(productData);
+    // A freshly captured photo is queued for upload (immediately if online, on
+    // reconnect otherwise). The queue writes the resulting URL onto the product.
+    if (localPhotoPath && savedId) {
+      enqueuePendingPhoto(savedId, localPhotoPath);
+      processPhotoQueue().catch(() => {});
+    }
     setShowSuccess(true);
     setTimeout(() => {
       setShowSuccess(false);
@@ -195,7 +209,7 @@ export default function AddProductScreen() {
                 id: 'preview', bacId, name: name || 'Nom du produit',
                 quantity: parseFloat(quantity) || 0, unit,
                 addedAt: Date.now(), dlc, status: 'active', actionType,
-                temperature: temperature ? parseFloat(temperature) : undefined, origin, photoUrl,
+                temperature: temperature ? parseFloat(temperature) : undefined, origin, photoUrl: photoPreviewUri,
                 modifiedAt: Date.now(), syncStatus: 'synced',
               }}
               size="sm"
@@ -295,21 +309,23 @@ export default function AddProductScreen() {
 
           <View className="gap-3">
             <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Photo <Text className="text-gray-300">(optionnel)</Text></Text>
-            {photoUrl ? (
+            {photoPreviewUri ? (
               <View className="flex-row items-center gap-4 bg-white border-2 border-gray-100 p-3 rounded-2xl">
-                <Image source={{ uri: photoUrl }} className="w-16 h-16 rounded-xl" />
+                <Image source={{ uri: photoPreviewUri }} className="w-16 h-16 rounded-xl" />
                 <View className="flex-1">
                   <Text className="text-xs font-black text-gray-900 uppercase">Photo ajoutée</Text>
-                  <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Enregistrée avec l'étiquette</Text>
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    {localPhotoPath ? "Envoyée à l'enregistrement" : 'Enregistrée'}
+                  </Text>
                 </View>
-                <Pressable onPress={() => { setPhotoUrl(undefined); setPhotoError(null); }} className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
+                <Pressable onPress={() => { setLocalPhotoPath(undefined); setPhotoUrl(undefined); setPhotoError(null); }} className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
                   <Trash2 size={18} color="#EF4444" />
                 </Pressable>
               </View>
-            ) : photoUploading ? (
+            ) : photoProcessing ? (
               <View className="flex-row items-center justify-center gap-3 bg-white border-2 border-gray-100 p-5 rounded-2xl">
                 <ActivityIndicator color="#10B981" />
-                <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Envoi en cours…</Text>
+                <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Traitement…</Text>
               </View>
             ) : (
               <View className="flex-row gap-3">

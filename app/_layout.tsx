@@ -64,8 +64,10 @@ function AuthGate({ children }: { children: ReactNode }) {
           if (uid) {
             // Lazy import to keep the auth path independent of Firestore on cold start
             import('../src/lib/sync').then((sync) => sync.startSync(uid));
+            import('../src/lib/photoQueue').then((pq) => pq.startPhotoQueue());
           } else {
             import('../src/lib/sync').then((sync) => sync.stopSync());
+            import('../src/lib/photoQueue').then((pq) => pq.stopPhotoQueue());
           }
         })
         .catch(() => {});

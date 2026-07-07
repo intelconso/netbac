@@ -75,6 +75,8 @@ interface StoreActions {
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
+  enqueuePendingPhoto: (productId: string, localPath: string) => void;
+  removePendingPhoto: (productId: string) => void;
   setSyncState: (state: { status?: AppState['lastSyncStatus']; at?: number | null; error?: string | null }) => void;
   applyCloudState: (cloud: Partial<AppState>) => void;
   resetState: () => void;
@@ -111,6 +113,7 @@ const INITIAL_STATE: AppState = {
   lastSyncAt: null,
   lastSyncStatus: 'idle',
   lastSyncError: null,
+  pendingPhotos: [],
 };
 
 // Soft-delete: items are not removed from arrays, only flagged with `deletedAt`.
@@ -619,6 +622,17 @@ export const useStore = create<AppState & StoreActions>()(
 
       setOffline: (isOffline) => set({ isOffline }),
 
+      // One pending photo per product: a re-capture replaces any existing entry.
+      enqueuePendingPhoto: (productId, localPath) => set((state) => ({
+        pendingPhotos: [
+          ...state.pendingPhotos.filter((p) => p.productId !== productId),
+          { productId, localPath, queuedAt: Date.now() },
+        ],
+      })),
+      removePendingPhoto: (productId) => set((state) => ({
+        pendingPhotos: state.pendingPhotos.filter((p) => p.productId !== productId),
+      })),
+
       setSyncState: ({ status, at, error }) =>
         set((state) => ({
           lastSyncStatus: status ?? state.lastSyncStatus,
@@ -741,6 +755,7 @@ export const useStore = create<AppState & StoreActions>()(
         lastSyncAt: state.lastSyncAt,
         lastSyncStatus: state.lastSyncStatus,
         lastSyncError: state.lastSyncError,
+        pendingPhotos: state.pendingPhotos,
       }),
       merge: (persistedState, currentState) => {
         const merged: Record<string, unknown> = { ...currentState };

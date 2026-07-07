@@ -15,8 +15,14 @@ interface ProductLabelProps {
 }
 
 export default function ProductLabel({ product, size = 'sm', className }: ProductLabelProps) {
-  const { zones, storageUnits, shelves, bacs, customActionTypes, defaultActionTypeStates } = useActiveStore();
+  const { zones, storageUnits, shelves, bacs, customActionTypes, defaultActionTypeStates, pendingPhotos } = useActiveStore();
   const dayColor = getDayColor(product.addedAt);
+
+  // Prefer the uploaded Cloudinary URL; fall back to a locally-queued file that
+  // hasn't uploaded yet (e.g. captured offline) so the photo shows immediately.
+  const pendingPhoto = pendingPhotos?.find((p) => p.productId === product.id);
+  const photoSource = product.photoUrl ?? pendingPhoto?.localPath;
+  const photoPending = !product.photoUrl && !!pendingPhoto;
 
   const bac = bacs.find((b) => b.id === product.bacId);
   const shelf = shelves.find((s) => s.id === bac?.shelfId);
@@ -60,12 +66,15 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
         <View className="gap-4">
           <View className="flex-row justify-between items-start">
             <View className="flex-row items-center flex-1 gap-3">
-              {product.photoUrl && (
-                <Pressable onPress={() => setShowFullPhoto(true)} hitSlop={6}>
+              {photoSource && (
+                <Pressable onPress={() => setShowFullPhoto(true)} hitSlop={6} className="relative">
                   <Image
-                    source={{ uri: product.photoUrl }}
+                    source={{ uri: photoSource }}
                     className={cn('rounded-xl bg-gray-100', isLg ? 'w-20 h-20 rounded-2xl' : 'w-12 h-12')}
                   />
+                  {photoPending && (
+                    <View className="absolute -top-1 -right-1 rounded-full bg-amber-400 border border-white" style={{ width: 12, height: 12 }} />
+                  )}
                 </Pressable>
               )}
               <View className="flex-1 gap-1">
@@ -144,10 +153,10 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
         </View>
       </View>
 
-      {product.photoUrl && (
+      {photoSource && (
         <Modal visible={showFullPhoto} transparent animationType="fade" onRequestClose={() => setShowFullPhoto(false)}>
           <Pressable onPress={() => setShowFullPhoto(false)} className="flex-1 bg-black/90 items-center justify-center p-4">
-            <Image source={{ uri: product.photoUrl }} className="w-full h-4/5" resizeMode="contain" />
+            <Image source={{ uri: photoSource }} className="w-full h-4/5" resizeMode="contain" />
             <Pressable onPress={() => setShowFullPhoto(false)} className="absolute top-14 right-6 w-11 h-11 rounded-full bg-white/15 items-center justify-center">
               <X size={24} color="#fff" />
             </Pressable>

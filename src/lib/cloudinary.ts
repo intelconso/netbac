@@ -29,8 +29,9 @@ export function isCloudinaryConfigured(): boolean {
 
 // Downscale + recompress a camera/gallery original (often 2–5 MB) to a small
 // reference thumbnail (~1000px, JPEG q0.7 ≈ 50–120 KB) before it ever leaves
-// the device. Cheap sync payload, cheap upload, cheap Cloudinary storage.
-async function compress(localUri: string): Promise<string> {
+// the device. Cheap sync payload, cheap upload, cheap Cloudinary storage. Done
+// at capture time so the persisted/queued file is already small even offline.
+export async function compressImage(localUri: string): Promise<string> {
   const result = await ImageManipulator.manipulateAsync(
     localUri,
     [{ resize: { width: 1000 } }],
@@ -39,16 +40,15 @@ async function compress(localUri: string): Promise<string> {
   return result.uri;
 }
 
-// Compress then POST to Cloudinary's unsigned upload endpoint. Resolves to the
-// hosted secure_url, which is what we persist on Product.photoUrl. Throws on
-// no-network or a non-2xx Cloudinary response so the caller can surface it and
-// let the user retry or save without a photo.
-export async function uploadProductImage(localUri: string): Promise<string> {
+// POST an already-compressed local file to Cloudinary's unsigned upload
+// endpoint. Resolves to the hosted secure_url (what we persist on
+// Product.photoUrl). Throws on no-network or a non-2xx response so the caller
+// (the upload queue) can leave the item queued and retry later.
+export async function uploadToCloudinary(localUri: string): Promise<string> {
   const { cloudName, uploadPreset } = getConfig();
-  const uri = await compress(localUri);
 
   const form = new FormData();
-  form.append('file', { uri, type: 'image/jpeg', name: 'product.jpg' } as any);
+  form.append('file', { uri: localUri, type: 'image/jpeg', name: 'product.jpg' } as any);
   form.append('upload_preset', uploadPreset);
 
   const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {

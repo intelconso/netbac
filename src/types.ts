@@ -406,4 +406,20 @@ export interface AppState {
   lastSyncAt: number | null;
   lastSyncStatus: SyncStatus;
   lastSyncError: string | null;
+  // Device-local queue of product photos captured but not yet uploaded to
+  // Cloudinary (e.g. taken offline). Persisted locally so it survives restarts,
+  // but deliberately EXCLUDED from CLOUD_KEYS in sync.ts — a local file path is
+  // meaningless on another device. The uploader (photoQueue.ts) drains it on
+  // reconnect and writes the resulting photoUrl onto the product, which then
+  // syncs normally.
+  pendingPhotos: PendingPhoto[];
+}
+
+// One product photo awaiting upload. `localPath` is a file:// URI in the app's
+// document directory (persistent). Keyed by productId — one pending photo per
+// product; a re-capture replaces the entry.
+export interface PendingPhoto {
+  productId: string;
+  localPath: string;
+  queuedAt: number;
 }
