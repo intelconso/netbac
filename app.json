@@ -59,8 +59,21 @@
         {
           "color": "#10B981"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NETBAC a besoin d'accéder à vos photos pour ajouter une photo au produit.",
+          "cameraPermission": "NETBAC a besoin de la caméra pour photographier le produit."
+        }
       ]
     ],
+    "extra": {
+      "cloudinary": {
+        "cloudName": "durqtcvrf",
+        "uploadPreset": "netbac_products"
+      }
+    },
     "experiments": {
       "typedRoutes": true
     }

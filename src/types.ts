@@ -69,6 +69,9 @@ export interface Product {
   temperature?: number;
   origin?: string;
   notes?: string;
+  // Optional product photo. Stores only the Cloudinary secure_url (a short
+  // string) — never image bytes, which would blow the single-doc sync payload.
+  photoUrl?: string;
   // Real-world date of use, when different from modifiedAt — set when the
   // user back-dates a "Utilisé" action (typically because the label expired
   // before they remembered to mark it).

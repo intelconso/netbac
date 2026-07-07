@@ -1,7 +1,9 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Image, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft } from 'lucide-react-native';
+import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft, Camera, ImagePlus, Trash2 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadProductImage } from '../src/lib/cloudinary';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
 import { ActionType } from '../src/types';
@@ -47,6 +49,33 @@ export default function AddProductScreen() {
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calMonth, setCalMonth] = useState(() => startOfMonth(new Date(dlc)));
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(existingProduct?.photoUrl);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // Pick from camera or gallery → compress + upload to Cloudinary immediately,
+  // so the URL is ready by the time the user submits. Upload runs while they
+  // fill the rest of the form. Failure is non-blocking: photo is optional.
+  const handlePickPhoto = async (source: 'camera' | 'library') => {
+    setPhotoError(null);
+    try {
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) { setPhotoError('Accès caméra refusé.'); return; }
+      }
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+      if (result.canceled || !result.assets?.[0]) return;
+      setPhotoUploading(true);
+      const url = await uploadProductImage(result.assets[0].uri);
+      setPhotoUrl(url);
+    } catch (e: any) {
+      setPhotoError(e?.message ?? "Échec de l'envoi de la photo.");
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -116,6 +145,9 @@ export default function AddProductScreen() {
     };
     if (temperature) productData.temperature = parseFloat(temperature);
     if (origin) productData.origin = origin;
+    // Assigned unconditionally so clearing the photo on edit actually removes it
+    // (undefined is stripped before the cloud push and reads as absent locally).
+    productData.photoUrl = photoUrl;
     if (editMode && params.productId) updateProduct(params.productId, productData);
     else addProduct(productData);
     setShowSuccess(true);
@@ -163,7 +195,7 @@ export default function AddProductScreen() {
                 id: 'preview', bacId, name: name || 'Nom du produit',
                 quantity: parseFloat(quantity) || 0, unit,
                 addedAt: Date.now(), dlc, status: 'active', actionType,
-                temperature: temperature ? parseFloat(temperature) : undefined, origin,
+                temperature: temperature ? parseFloat(temperature) : undefined, origin, photoUrl,
                 modifiedAt: Date.now(), syncStatus: 'synced',
               }}
               size="sm"
@@ -259,6 +291,41 @@ export default function AddProductScreen() {
                 </Pressable>
               ))}
             </View>
+          </View>
+
+          <View className="gap-3">
+            <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Photo <Text className="text-gray-300">(optionnel)</Text></Text>
+            {photoUrl ? (
+              <View className="flex-row items-center gap-4 bg-white border-2 border-gray-100 p-3 rounded-2xl">
+                <Image source={{ uri: photoUrl }} className="w-16 h-16 rounded-xl" />
+                <View className="flex-1">
+                  <Text className="text-xs font-black text-gray-900 uppercase">Photo ajoutée</Text>
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Enregistrée avec l'étiquette</Text>
+                </View>
+                <Pressable onPress={() => { setPhotoUrl(undefined); setPhotoError(null); }} className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
+                  <Trash2 size={18} color="#EF4444" />
+                </Pressable>
+              </View>
+            ) : photoUploading ? (
+              <View className="flex-row items-center justify-center gap-3 bg-white border-2 border-gray-100 p-5 rounded-2xl">
+                <ActivityIndicator color="#10B981" />
+                <Text className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Envoi en cours…</Text>
+              </View>
+            ) : (
+              <View className="flex-row gap-3">
+                <Pressable onPress={() => handlePickPhoto('camera')} className="flex-1 flex-row items-center justify-center gap-2 bg-white border-2 border-gray-100 py-4 rounded-2xl">
+                  <Camera size={18} color="#10B981" />
+                  <Text className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Prendre</Text>
+                </Pressable>
+                <Pressable onPress={() => handlePickPhoto('library')} className="flex-1 flex-row items-center justify-center gap-2 bg-white border-2 border-gray-100 py-4 rounded-2xl">
+                  <ImagePlus size={18} color="#10B981" />
+                  <Text className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Choisir</Text>
+                </Pressable>
+              </View>
+            )}
+            {photoError && (
+              <Text className="text-[9px] font-bold text-red-500 uppercase tracking-widest">{photoError}</Text>
+            )}
           </View>
 
           <View className="flex-row gap-4">

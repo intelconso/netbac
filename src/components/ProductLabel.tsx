@@ -1,7 +1,7 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Image, Pressable, Modal } from 'react-native';
 import {
-  Thermometer, Calendar, Clock, MapPin,
+  Thermometer, Calendar, Clock, MapPin, X,
 } from 'lucide-react-native';
 import { Product } from '../types';
 import { formatDate, getDayColor, cn } from '../lib/utils';
@@ -30,6 +30,7 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
   const productDef = getActionTypeDef(product.actionType, { customActionTypes, defaultActionTypeStates });
 
   const isLg = size === 'lg';
+  const [showFullPhoto, setShowFullPhoto] = useState(false);
 
   return (
     <View className={cn('bg-white relative overflow-hidden border-2 border-gray-200', isLg ? 'rounded-3xl p-8' : 'rounded-2xl p-4', className)}>
@@ -58,13 +59,23 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
 
         <View className="gap-4">
           <View className="flex-row justify-between items-start">
-            <View className="flex-1 gap-1">
-              <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-xs' : 'text-[8px]')}>
-                Produit / Product
-              </Text>
-              <Text className={cn('font-black text-gray-900 uppercase', isLg ? 'text-5xl' : 'text-2xl')}>
-                {product.name}
-              </Text>
+            <View className="flex-row items-center flex-1 gap-3">
+              {product.photoUrl && (
+                <Pressable onPress={() => setShowFullPhoto(true)} hitSlop={6}>
+                  <Image
+                    source={{ uri: product.photoUrl }}
+                    className={cn('rounded-xl bg-gray-100', isLg ? 'w-20 h-20 rounded-2xl' : 'w-12 h-12')}
+                  />
+                </Pressable>
+              )}
+              <View className="flex-1 gap-1">
+                <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-xs' : 'text-[8px]')}>
+                  Produit / Product
+                </Text>
+                <Text className={cn('font-black text-gray-900 uppercase', isLg ? 'text-5xl' : 'text-2xl')}>
+                  {product.name}
+                </Text>
+              </View>
             </View>
             <View className="items-end ml-4">
               <Text className={cn('font-bold text-gray-400 uppercase tracking-widest', isLg ? 'text-xs' : 'text-[8px]')}>
@@ -132,6 +143,17 @@ export default function ProductLabel({ product, size = 'sm', className }: Produc
           </View>
         </View>
       </View>
+
+      {product.photoUrl && (
+        <Modal visible={showFullPhoto} transparent animationType="fade" onRequestClose={() => setShowFullPhoto(false)}>
+          <Pressable onPress={() => setShowFullPhoto(false)} className="flex-1 bg-black/90 items-center justify-center p-4">
+            <Image source={{ uri: product.photoUrl }} className="w-full h-4/5" resizeMode="contain" />
+            <Pressable onPress={() => setShowFullPhoto(false)} className="absolute top-14 right-6 w-11 h-11 rounded-full bg-white/15 items-center justify-center">
+              <X size={24} color="#fff" />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </View>
   );
 }
