@@ -1,17 +1,74 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Scan, Plus, AlertTriangle, ClipboardCheck, FileText, Eye } from 'lucide-react-native';
+import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
 import { resolveTempUnits } from '../../src/lib/tempUnits';
-import { dayStatus } from '../../src/lib/serviceDays';
+import { dayStatus, startOfDayMs } from '../../src/lib/serviceDays';
+import { pendingTaskCount } from '../../src/lib/tasks';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+// Palette des tuiles du tableau de bord. Une tuile "urgente" est pleine et
+// colorée (blanc sur fond), une tuile au repos est blanche et bordée — donc
+// une carte qui passe de "à faire" à "fait" change de tonalité sans changer
+// de place ni de taille : la grille ne bouge jamais.
+type Tone = 'primary' | 'alert' | 'danger' | 'ok' | 'blue' | 'neutral';
+
+const TONES: Record<Tone, {
+  bg: string; bordered?: boolean; title: string; sub: string; iconBg: string; icon: string; count: string;
+}> = {
+  primary: { bg: '#10B981', title: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', iconBg: 'rgba(255,255,255,0.2)', icon: '#FFFFFF', count: 'rgba(255,255,255,0.35)' },
+  alert:   { bg: '#F59E0B', title: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', iconBg: 'rgba(255,255,255,0.2)', icon: '#FFFFFF', count: 'rgba(255,255,255,0.35)' },
+  danger:  { bg: '#EF4444', title: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', iconBg: 'rgba(255,255,255,0.2)', icon: '#FFFFFF', count: 'rgba(255,255,255,0.35)' },
+  ok:      { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#10B981', iconBg: 'rgba(16,185,129,0.1)', icon: '#10B981', count: '#E5E7EB' },
+  blue:    { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#9CA3AF', iconBg: '#EFF6FF', icon: '#3B82F6', count: '#E5E7EB' },
+  neutral: { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#9CA3AF', iconBg: '#F3F4F6', icon: '#9CA3AF', count: '#E5E7EB' },
+};
+
+interface TileProps {
+  icon: React.ComponentType<{ size?: number; color?: string }>;
+  title: string;
+  subtitle: string;
+  tone: Tone;
+  count?: number;
+  onPress: () => void;
+}
+
+function Tile({ icon: Icon, title, subtitle, tone, count, onPress }: TileProps) {
+  const t = TONES[tone];
+  return (
+    <Pressable
+      onPress={onPress}
+      className={cn('flex-1 w-full rounded-3xl p-4 gap-3', t.bordered && 'border border-gray-100')}
+      style={{ backgroundColor: t.bg, minHeight: 112 }}
+    >
+      <View className="flex-row items-center justify-between">
+        <View className="w-11 h-11 rounded-2xl items-center justify-center" style={{ backgroundColor: t.iconBg }}>
+          <Icon size={22} color={t.icon} />
+        </View>
+        {!!count && <Text className="text-2xl font-black" style={{ color: t.count }}>{count}</Text>}
+      </View>
+      <View className="gap-0.5">
+        <Text className="text-xs font-black uppercase tracking-widest" style={{ color: t.title }} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text className="text-[9px] font-bold uppercase tracking-widest" style={{ color: t.sub }} numberOfLines={2}>
+          {subtitle}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides } = useActiveStore();
+  const {
+    products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas,
+    storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides,
+    tasks, taskCompletions,
+  } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
 
@@ -28,13 +85,13 @@ export default function HomeScreen() {
     return activeProducts.filter((p) => p.addedAt >= startOfToday.getTime()).length;
   }, [activeProducts]);
 
+  const schedule = { closedWeekdays, singleServiceWeekdays, dayOverrides };
+
   // Daily mandatory controls still to do (oils, fridge temps, cleaning) —
-  // drives the Traçabilité card next to À surveiller / Étiquetage.
+  // drives the Traçabilité tile.
   const pendingControls = useMemo(() => {
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const t0 = startOfToday.getTime();
-    const status = dayStatus(t0, { closedWeekdays, singleServiceWeekdays, dayOverrides });
+    const t0 = startOfDayMs(Date.now());
+    const status = dayStatus(t0, schedule);
     // Jour fermé : aucun contrôle n'est attendu aujourd'hui.
     if (status === 'closed') return 0;
     let pending = 0;
@@ -55,14 +112,23 @@ export default function HomeScreen() {
     return pending;
   }, [oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas, storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides]);
 
+  // Checklist d'équipe — même logique de jour fermé, portée par tasks.ts.
+  const pendingTasks = useMemo(
+    () => pendingTaskCount(startOfDayMs(Date.now()), tasks, taskCompletions, schedule),
+    [tasks, taskCompletions, closedWeekdays, singleServiceWeekdays, dayOverrides]
+  );
+  const hasTasks = tasks.length > 0;
+
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
 
-  // Gyrophare : la carte Traçabilité "respire" tant qu'un des 3 contrôles du jour
-  // (huiles, nettoyage, températures) reste à faire ; se fige une fois tout fait.
+  // Gyrophare : les tuiles Traçabilité et Tâches "respirent" tant qu'il reste
+  // quelque chose à faire, et se figent une fois la journée en règle. Une seule
+  // boucle partagée — seules les tuiles concernées s'y accrochent.
   const pulse = useRef(new Animated.Value(1)).current;
+  const anyPending = pendingControls > 0 || pendingTasks > 0;
   useEffect(() => {
-    if (pendingControls === 0) { pulse.setValue(1); return; }
+    if (!anyPending) { pulse.setValue(1); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 0.4, duration: 650, useNativeDriver: true }),
@@ -71,10 +137,10 @@ export default function HomeScreen() {
     );
     loop.start();
     return () => loop.stop();
-  }, [pendingControls, pulse]);
+  }, [anyPending, pulse]);
 
   return (
-    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 96, gap: 24 }}>
+    <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 96, gap: 14 }}>
       {/* Header */}
       <View className="gap-1">
         <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{today}</Text>
@@ -83,67 +149,81 @@ export default function HomeScreen() {
         </Text>
       </View>
 
-      {/* Red alert */}
-      {expiringSoon.length > 0 && (
-        <Pressable onPress={() => router.push('/(tabs)/alerts' as any)} className="bg-danger p-5 rounded-3xl">
-          <View className="flex-row items-center gap-4">
-            <View className="w-12 h-12 rounded-2xl bg-white/20 items-center justify-center">
-              <AlertTriangle size={26} color="#fff" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-base font-black text-white uppercase">À surveiller</Text>
-              <Text className="text-[9px] font-bold text-white/70 uppercase tracking-widest mt-0.5">
-                {expiringSoon.length} {expiringSoon.length > 1 ? 'étiquettes critiques' : 'étiquette critique'}
-              </Text>
-            </View>
-            <Text className="text-3xl font-black text-white/30">{expiringSoon.length}</Text>
-          </View>
-        </Pressable>
-      )}
-
-      {/* Primary CTA */}
-      <Pressable onPress={() => router.push('/express-add')} className="bg-primary p-6 rounded-3xl overflow-hidden">
-        <View className="flex-row items-center gap-5">
-          <View className="w-14 h-14 rounded-2xl bg-white/20 items-center justify-center">
-            <Plus size={30} color="#fff" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-lg font-black text-white uppercase">Étiquetage</Text>
-            <Text className="text-[9px] font-bold text-white/70 uppercase tracking-widest mt-0.5">Traçabilité instantanée</Text>
-          </View>
-          <Scan size={44} color="rgba(255,255,255,0.18)" />
+      {/* Raccourcis — grille 2 × 3 */}
+      <View className="flex-row gap-4">
+        <View className="flex-1">
+          <Tile
+            icon={AlertTriangle}
+            title="À surveiller"
+            subtitle={expiringSoon.length > 0
+              ? `${expiringSoon.length} ${expiringSoon.length > 1 ? 'étiquettes critiques' : 'étiquette critique'}`
+              : 'Rien à signaler'}
+            tone={expiringSoon.length > 0 ? 'danger' : 'neutral'}
+            count={expiringSoon.length}
+            onPress={() => router.push('/(tabs)/alerts' as any)}
+          />
         </View>
-      </Pressable>
+        <Animated.View style={{ flex: 1, opacity: pendingControls > 0 ? pulse : 1 }}>
+          <Tile
+            icon={ClipboardCheck}
+            title="Traçabilité"
+            subtitle={pendingControls > 0
+              ? `${pendingControls} contrôle${pendingControls > 1 ? 's' : ''} du jour`
+              : 'Contrôles effectués'}
+            tone={pendingControls > 0 ? 'alert' : 'ok'}
+            count={pendingControls}
+            onPress={() => router.push('/(tabs)/tracabilite' as any)}
+          />
+        </Animated.View>
+      </View>
 
-      {/* Traçabilité — daily HACCP controls (gyrophare tant que non terminé) */}
-      <Animated.View style={{ opacity: pulse }}>
-      <Pressable
-        onPress={() => router.push('/(tabs)/tracabilite' as any)}
-        className={cn('p-5 rounded-3xl', pendingControls === 0 && 'border border-gray-100')}
-        style={{ backgroundColor: pendingControls > 0 ? '#F59E0B' : '#FFFFFF' }}
-      >
-        <View className="flex-row items-center gap-4">
-          <View
-            className="w-12 h-12 rounded-2xl items-center justify-center"
-            style={{ backgroundColor: pendingControls > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(16,185,129,0.1)' }}
-          >
-            <ClipboardCheck size={26} color={pendingControls > 0 ? '#fff' : '#10B981'} />
-          </View>
-          <View className="flex-1">
-            <Text className="text-base font-black uppercase" style={{ color: pendingControls > 0 ? '#fff' : '#111827' }}>Traçabilité</Text>
-            <Text className="text-[9px] font-bold uppercase tracking-widest mt-0.5" style={{ color: pendingControls > 0 ? 'rgba(255,255,255,0.7)' : '#10B981' }}>
-              {pendingControls > 0
-                ? `${pendingControls} contrôle${pendingControls > 1 ? 's' : ''} du jour à faire`
-                : 'Contrôles du jour effectués'}
-            </Text>
-          </View>
-          {pendingControls > 0 && <Text className="text-3xl font-black" style={{ color: 'rgba(255,255,255,0.3)' }}>{pendingControls}</Text>}
+      <View className="flex-row gap-4">
+        <Animated.View style={{ flex: 1, opacity: pendingTasks > 0 ? pulse : 1 }}>
+          <Tile
+            icon={ListChecks}
+            title="Tâches"
+            subtitle={pendingTasks > 0
+              ? `${pendingTasks} tâche${pendingTasks > 1 ? 's' : ''} à faire`
+              : hasTasks ? 'Tout est fait' : "Checklist de l'équipe"}
+            tone={pendingTasks > 0 ? 'alert' : hasTasks ? 'ok' : 'neutral'}
+            count={pendingTasks}
+            onPress={() => router.push('/tasks' as any)}
+          />
+        </Animated.View>
+        <View className="flex-1">
+          <Tile
+            icon={Plus}
+            title="Étiquetage"
+            subtitle="Traçabilité instantanée"
+            tone="primary"
+            onPress={() => router.push('/express-add')}
+          />
         </View>
-      </Pressable>
-      </Animated.View>
+      </View>
+
+      <View className="flex-row gap-4">
+        <View className="flex-1">
+          <Tile
+            icon={Eye}
+            title="Vue spatiale"
+            subtitle="Inventaire"
+            tone="blue"
+            onPress={() => router.push('/spatial' as any)}
+          />
+        </View>
+        <View className="flex-1">
+          <Tile
+            icon={FileText}
+            title="Rapports"
+            subtitle="PDF HACCP"
+            tone="ok"
+            onPress={() => router.push('/reports' as any)}
+          />
+        </View>
+      </View>
 
       {/* Stats */}
-      <View className="flex-row gap-4">
+      <View className="flex-row gap-4 mt-2">
         <Pressable
           onPress={() => router.push('/(tabs)/labels' as any)}
           className="flex-1 bg-white rounded-3xl border border-gray-100 p-5 items-center gap-1 active:bg-gray-50"
@@ -159,37 +239,6 @@ export default function HomeScreen() {
           <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Aujourd'hui</Text>
         </Pressable>
       </View>
-
-      {/* Action tiles */}
-      <View className="flex-row gap-4">
-        <Pressable
-          onPress={() => router.push('/spatial' as any)}
-          className="flex-1 bg-white rounded-3xl border border-gray-100 p-5 items-center justify-center gap-3 active:bg-gray-50"
-          style={{ aspectRatio: 1 }}
-        >
-          <View className="w-14 h-14 rounded-2xl bg-blue-50 items-center justify-center">
-            <Eye size={26} color="#3B82F6" />
-          </View>
-          <View className="items-center gap-0.5">
-            <Text className="text-xs font-black text-gray-900 uppercase tracking-widest">Vue spatiale</Text>
-            <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Inventaire</Text>
-          </View>
-        </Pressable>
-        <Pressable
-          onPress={() => router.push('/reports' as any)}
-          className="flex-1 bg-white rounded-3xl border border-gray-100 p-5 items-center justify-center gap-3 active:bg-gray-50"
-          style={{ aspectRatio: 1 }}
-        >
-          <View className="w-14 h-14 rounded-2xl bg-primary/10 items-center justify-center">
-            <FileText size={26} color="#10B981" />
-          </View>
-          <View className="items-center gap-0.5">
-            <Text className="text-xs font-black text-gray-900 uppercase tracking-widest">Rapports</Text>
-            <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">PDF HACCP</Text>
-          </View>
-        </Pressable>
-      </View>
-
     </ScrollView>
   );
 }

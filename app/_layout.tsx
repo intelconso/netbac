@@ -6,7 +6,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { useStore, switchStoreToUser } from '../src/lib/store';
-import { rescheduleAllDlcReminders } from '../src/lib/notifications';
+import { rescheduleAllDlcReminders, scheduleTaskDigest, nextReminderOccurrence } from '../src/lib/notifications';
+import { pendingTaskCount } from '../src/lib/tasks';
+import { startOfDayMs } from '../src/lib/serviceDays';
 import { useSession } from '../src/lib/useSession';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null; info: ErrorInfo | null }> {
@@ -89,6 +91,12 @@ function AuthGate({ children }: { children: ReactNode }) {
 
 function RootInner() {
   const products = useStore((s) => s.products);
+  const tasks = useStore((s) => s.tasks);
+  const taskCompletions = useStore((s) => s.taskCompletions);
+  const taskReminderHour = useStore((s) => s.taskReminderHour);
+  const closedWeekdays = useStore((s) => s.closedWeekdays);
+  const singleServiceWeekdays = useStore((s) => s.singleServiceWeekdays);
+  const dayOverrides = useStore((s) => s.dayOverrides);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -96,6 +104,28 @@ function RootInner() {
     }, 1500);
     return () => clearTimeout(t);
   }, [products]);
+
+  // Rappel de la checklist d'équipe. Le compte porte sur la journée que la
+  // prochaine occurrence de l'heure réglée couvrira — pas forcément aujourd'hui :
+  // passé 17h, un rappel réglé à 17h vise demain, et c'est le nombre de tâches
+  // de demain qui doit s'afficher. Décalé après les rappels DLC pour ne pas
+  // enchaîner deux salves d'appels natifs au démarrage.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (taskReminderHour === undefined) {
+        scheduleTaskDigest(undefined, 0).catch(() => {});
+        return;
+      }
+      const target = startOfDayMs(nextReminderOccurrence(taskReminderHour).getTime());
+      const pending = pendingTaskCount(target, tasks, taskCompletions, {
+        closedWeekdays,
+        singleServiceWeekdays,
+        dayOverrides,
+      });
+      scheduleTaskDigest(taskReminderHour, pending).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [tasks, taskCompletions, taskReminderHour, closedWeekdays, singleServiceWeekdays, dayOverrides]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -112,6 +142,7 @@ function RootInner() {
             <Stack.Screen name="journal" />
             <Stack.Screen name="history" />
             <Stack.Screen name="controls-history" />
+            <Stack.Screen name="tasks" />
             <Stack.Screen name="reports" />
             <Stack.Screen name="camera" />
           </Stack>

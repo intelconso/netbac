@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Bug, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, MessageSquare, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
+import { ArrowLeft, Bug, CheckCircle2, ChefHat, ChevronDown, ChevronLeft, ChevronRight, Droplets, ListChecks, MessageSquare, Sparkles, Thermometer, Truck, XCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn } from '../src/lib/utils';
@@ -31,7 +31,7 @@ interface DayEntry {
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits, taskCompletions } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
   // Which control group is expanded for the displayed day.
   const [openControl, setOpenControl] = useState<string | null>(null);
@@ -47,8 +47,8 @@ export default function ControlsHistoryScreen() {
   const dayEnd = day + DAY - 1;
 
   const earliest = useMemo(
-    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions, ...dailyRemarks, ...pestControlChecks].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
-    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks]
+    () => [...oilChecks, ...fridgeTempChecks, ...fabrications, ...cleaningChecks, ...receptions, ...dailyRemarks, ...pestControlChecks, ...taskCompletions].reduce((min, c) => Math.min(min, c.timestamp), Date.now()),
+    [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, taskCompletions]
   );
   const canGoBack = day > startOfDay(new Date(earliest)).getTime();
   const canGoForward = day < startOfDay(new Date()).getTime();
@@ -219,15 +219,36 @@ export default function ControlsHistoryScreen() {
         ],
       }));
 
+    // Checklist d'équipe — pas une page du registre HACCP, mais le même besoin
+    // de retrouver qui a fait quoi. `dayKey` porte la journée couverte, alors
+    // que `timestamp` est l'heure réelle du cochage.
+    const taskEntries: DayEntry[] = taskCompletions
+      .filter((c) => c.dayKey === dayStart)
+      .map((c) => ({
+        id: c.id,
+        control: 'Tâches',
+        icon: ListChecks,
+        ok: true,
+        title: c.taskLabel,
+        subtitle: `${format(new Date(c.timestamp), 'HH:mm', { locale: fr })} • ${c.operatorName}`,
+        timestamp: c.timestamp,
+        details: [
+          { label: 'Tâche', value: c.taskLabel },
+          { label: 'Faite par', value: c.operatorName },
+          { label: 'Date', value: format(new Date(c.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+          ...(c.notes ? [{ label: 'Remarque', value: c.notes }] : []),
+        ],
+      }));
+
     // Single day shown — group by control type for readability.
     // (Plats témoins masqué pour l'instant — restauration collective only.)
     const byControl = new Map<string, DayEntry[]>();
-    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries, ...remarkEntries, ...pestEntries]) {
+    for (const e of [...entries, ...tempEntries, ...fabEntries, ...cleaningEntries, ...receptionEntries, ...remarkEntries, ...pestEntries, ...taskEntries]) {
       byControl.set(e.control, [...(byControl.get(e.control) ?? []), e]);
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, taskCompletions, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">

@@ -275,6 +275,63 @@ export interface CleaningTask {
   deletedAt?: number;
 }
 
+// Membre de l'équipe. Ce n'est PAS un compte : l'app reste mono-compte
+// (un doc Firestore users/{uid} par restaurant, voir sync.ts). C'est une liste
+// de noms gérée par l'admin, pour signer une tâche d'un tap au lieu de la
+// taper — le pendant du champ "Contrôleur" des contrôles du registre
+// (voir OilCheck.operatorName), en version liste.
+export interface Employee {
+  id: string;
+  name: string;
+  role?: string;              // ex. "Cuisine", "Salle" — purement indicatif
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Récurrence d'une tâche.
+// once     : ponctuelle — quitte la liste une fois faite
+// daily    : chaque jour de service
+// weekdays : uniquement les jours cochés (getDay() : 0 = dim … 6 = sam)
+// monthly  : une fois par mois, le `monthDay`-ième jour (clampé à la fin du mois)
+export type TaskFrequency = 'once' | 'daily' | 'weekdays' | 'monthly';
+
+// Tâche de la checklist d'équipe — le travail quotidien non réglementaire
+// (poubelles, hotte, stocks…), par opposition aux contrôles HACCP du registre.
+// Définie par l'admin dans Paramètres → Personnalisation → Tâches.
+export interface Task {
+  id: string;
+  label: string;
+  description?: string;
+  frequency: TaskFrequency;
+  weekdays?: number[];        // frequency === 'weekdays'
+  monthDay?: number;          // frequency === 'monthly', 1..31
+  // Indication d'attribution seulement : n'empêche personne d'autre de cocher.
+  assigneeId?: string;
+  order: number;              // ordre d'affichage, réglé par l'admin
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Une tâche faite. Comme les contrôles du registre, l'enregistrement snapshotte
+// le libellé et le nom : supprimer une tâche ou un employé n'efface jamais
+// l'historique de qui a fait quoi.
+export interface TaskCompletion {
+  // Déterministe — `${taskId}-${dayKey}`, voir taskCompletionId(). Deux
+  // appareils qui cochent la même tâche le même jour convergent sur un seul
+  // enregistrement au lieu d'en créer deux. Même principe que dayOverrideId().
+  id: string;
+  taskId: string;
+  taskLabel: string;          // snapshot du libellé au moment du cochage
+  dayKey: number;             // début de la journée couverte (ms, heure locale)
+  timestamp: number;          // moment réel du cochage
+  employeeId?: string;
+  operatorName: string;       // snapshot du nom — voir OilCheck.operatorName
+  notes?: string;
+  modifiedAt: number;
+  // Décocher = tombstone. Recocher le même jour réveille le même enregistrement.
+  deletedAt?: number;
+}
+
 // Plan de lutte contre les nuisibles — PMS, arrêté du 9/05/1995 art. 17.
 // Contrairement aux contrôles quotidiens (huiles, températures, nettoyage),
 // celui-ci est périodique : un passage tous les X jours/semaines/mois.
@@ -397,6 +454,13 @@ export interface AppState {
   receptions: ReceptionCheck[];
   dailyRemarks: DailyRemark[];
   witnessSamples: WitnessSample[];
+  // Checklist d'équipe — `tasks` est la définition (admin), `taskCompletions`
+  // l'historique des cochages. `employees` sert à signer un cochage d'un tap.
+  // `taskReminderHour` undefined = pas de rappel push (0-23 sinon).
+  employees: Employee[];
+  tasks: Task[];
+  taskCompletions: TaskCompletion[];
+  taskReminderHour?: number;
   productUnits: string[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];

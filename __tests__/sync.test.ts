@@ -65,6 +65,13 @@ describe('serializeStateForCloud', () => {
     expect(payload).toHaveProperty('bacs');
   });
 
+  it('includes the team checklist (employees, tasks, completions)', () => {
+    const payload = serializeStateForCloud(useStore.getState());
+    expect(payload).toHaveProperty('employees');
+    expect(payload).toHaveProperty('tasks');
+    expect(payload).toHaveProperty('taskCompletions');
+  });
+
   it('includes a numeric updatedAt for last-write-wins', () => {
     const before = Date.now();
     const payload = serializeStateForCloud(useStore.getState());

@@ -23,5 +23,8 @@ export function useActiveStore() {
   const pestControlChecks = useMemo(() => (state.pestControlChecks ?? []).filter((c) => !c.deletedAt), [state.pestControlChecks]);
   const pestStations = useMemo(() => (state.pestStations ?? []).filter((s) => !s.deletedAt), [state.pestStations]);
   const dayOverrides = useMemo(() => (state.dayOverrides ?? []).filter((o) => !o.deletedAt), [state.dayOverrides]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides };
+  const employees = useMemo(() => (state.employees ?? []).filter((e) => !e.deletedAt), [state.employees]);
+  const tasks = useMemo(() => (state.tasks ?? []).filter((t) => !t.deletedAt), [state.tasks]);
+  const taskCompletions = useMemo(() => (state.taskCompletions ?? []).filter((c) => !c.deletedAt), [state.taskCompletions]);
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions };
 }

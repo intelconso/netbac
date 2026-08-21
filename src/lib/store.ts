@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask } from '../types';
+import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, Task, TaskCompletion } from '../types';
 import { randomId } from './utils';
 import { deriveColdUnits } from './tempUnits';
 import { nextCheckFrom } from './pestControl';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
+import { taskCompletionId } from './tasks';
 
 interface StoreActions {
   addZone: (zone: Omit<Zone, 'id' | 'modifiedAt'>) => void;
@@ -72,6 +73,16 @@ interface StoreActions {
   addPestStation: (station: { number: string; zone: string }) => void;
   deletePestStation: (id: string) => void;
   setPestCadence: (cadence: PestCadence) => void;
+  addEmployee: (data: { name: string; role?: string }) => void;
+  updateEmployee: (id: string, patch: Partial<Pick<Employee, 'name' | 'role'>>) => void;
+  deleteEmployee: (id: string) => void;
+  addTask: (data: Omit<Task, 'id' | 'order' | 'modifiedAt' | 'deletedAt'>) => void;
+  updateTask: (id: string, patch: Partial<Omit<Task, 'id' | 'order' | 'modifiedAt'>>) => void;
+  deleteTask: (id: string) => void;
+  moveTask: (id: string, dir: 'up' | 'down') => void;
+  completeTask: (taskId: string, data: { employeeId?: string; operatorName: string; notes?: string }, options?: { dayKey?: number }) => void;
+  uncompleteTask: (taskId: string, dayKey?: number) => void;
+  setTaskReminderHour: (hour: number | undefined) => void;
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
@@ -105,6 +116,10 @@ const INITIAL_STATE: AppState = {
   receptions: [],
   dailyRemarks: [],
   witnessSamples: [],
+  employees: [],
+  tasks: [],
+  taskCompletions: [],
+  taskReminderHour: undefined,
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   customActionTypes: [],
   defaultActionTypeStates: [],
@@ -614,6 +629,106 @@ export const useStore = create<AppState & StoreActions>()(
 
       setPestCadence: (cadence) => set({ pestCadence: cadence }),
 
+      // --- Checklist d'équipe ------------------------------------------------
+
+      addEmployee: ({ name, role }) => set((state) => {
+        const n = name.trim();
+        if (!n) return {};
+        const r = role?.trim();
+        return {
+          employees: [
+            ...state.employees,
+            { id: randomId(), name: n, ...(r ? { role: r } : {}), modifiedAt: Date.now() },
+          ],
+        };
+      }),
+
+      updateEmployee: (id, patch) => set((state) => ({
+        employees: state.employees.map((e) => (e.id === id
+          ? {
+              ...e,
+              ...patch,
+              ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+              ...(patch.role !== undefined ? { role: patch.role.trim() } : {}),
+              modifiedAt: Date.now(),
+            }
+          : e)),
+      })),
+
+      // Les cochages passés gardent leur snapshot `operatorName` : supprimer un
+      // employé ne retire jamais son nom de l'historique.
+      deleteEmployee: (id) => set((state) => ({
+        employees: state.employees.map((e) => (e.id === id ? tomb(e) : e)),
+      })),
+
+      addTask: (data) => set((state) => {
+        const label = data.label.trim();
+        if (!label) return {};
+        const order = state.tasks.reduce((max, t) => Math.max(max, t.order ?? 0), -1) + 1;
+        return {
+          tasks: [...state.tasks, { ...data, label, id: randomId(), order, modifiedAt: Date.now() }],
+        };
+      }),
+
+      updateTask: (id, patch) => set((state) => ({
+        tasks: state.tasks.map((t) => (t.id === id
+          ? { ...t, ...patch, ...(patch.label !== undefined ? { label: patch.label.trim() } : {}), modifiedAt: Date.now() }
+          : t)),
+      })),
+
+      deleteTask: (id) => set((state) => ({
+        tasks: state.tasks.map((t) => (t.id === id ? tomb(t) : t)),
+      })),
+
+      // Réordonne la checklist. `order` est renuméroté sur les tâches vivantes
+      // après échange — les tombstones gardent le leur, elles sont filtrées à
+      // la lecture de toute façon.
+      moveTask: (id, dir) => set((state) => {
+        const live = state.tasks.filter((t) => !t.deletedAt).sort((a, b) => a.order - b.order);
+        const pos = live.findIndex((t) => t.id === id);
+        if (pos < 0) return {};
+        const target = dir === 'up' ? pos - 1 : pos + 1;
+        if (target < 0 || target >= live.length) return {};
+        [live[pos], live[target]] = [live[target], live[pos]];
+        const now = Date.now();
+        const orders = new Map(live.map((t, i) => [t.id, i]));
+        return {
+          tasks: state.tasks.map((t) => (orders.has(t.id)
+            ? { ...t, order: orders.get(t.id)!, modifiedAt: now }
+            : t)),
+        };
+      }),
+
+      // Upsert sur l'id déterministe : recocher après avoir décoché réveille le
+      // même enregistrement (deletedAt effacé) plutôt que d'en créer un second.
+      completeTask: (taskId, data, options) => set((state) => {
+        const task = state.tasks.find((t) => t.id === taskId);
+        if (!task) return {};
+        const dayKey = startOfDayMs(options?.dayKey ?? Date.now());
+        const id = taskCompletionId(taskId, dayKey);
+        const now = Date.now();
+        const entry: TaskCompletion = {
+          id,
+          taskId,
+          taskLabel: task.label,
+          dayKey,
+          timestamp: now,
+          ...(data.employeeId ? { employeeId: data.employeeId } : {}),
+          operatorName: data.operatorName.trim(),
+          ...(data.notes?.trim() ? { notes: data.notes.trim() } : {}),
+          modifiedAt: now,
+        };
+        const rest = state.taskCompletions.filter((c) => c.id !== id);
+        return { taskCompletions: [...rest, entry] };
+      }),
+
+      uncompleteTask: (taskId, dayKey) => set((state) => {
+        const id = taskCompletionId(taskId, startOfDayMs(dayKey ?? Date.now()));
+        return { taskCompletions: state.taskCompletions.map((c) => (c.id === id ? tomb(c) : c)) };
+      }),
+
+      setTaskReminderHour: (hour) => set({ taskReminderHour: hour }),
+
       setUser: (user) => set({ user }),
 
       updateSettings: (newSettings) => set((state) => ({
@@ -697,6 +812,13 @@ export const useStore = create<AppState & StoreActions>()(
             receptions: mergeNewer(state.receptions, cloud.receptions),
             dailyRemarks: mergeNewer(state.dailyRemarks, cloud.dailyRemarks),
             witnessSamples: mergeNewer(state.witnessSamples, cloud.witnessSamples),
+            // Checklist d'équipe. `?? []` : les docs cloud d'avant la
+            // fonctionnalité n'ont pas ces clés — rien à migrer, elles arrivent vides.
+            employees: mergeNewer(state.employees ?? [], cloud.employees),
+            tasks: mergeNewer(state.tasks ?? [], cloud.tasks),
+            taskCompletions: mergeNewer(state.taskCompletions ?? [], cloud.taskCompletions),
+            // Réglage — local wins once set ; un appareil neuf prend la valeur du cloud.
+            taskReminderHour: state.taskReminderHour ?? cloud.taskReminderHour,
             cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
             pestControlChecks: mergeNewer(state.pestControlChecks ?? [], cloud.pestControlChecks),
             pestStations: mergeNewer(state.pestStations ?? [], cloud.pestStations),
@@ -747,6 +869,10 @@ export const useStore = create<AppState & StoreActions>()(
         receptions: state.receptions,
         dailyRemarks: state.dailyRemarks,
         witnessSamples: state.witnessSamples,
+        employees: state.employees,
+        tasks: state.tasks,
+        taskCompletions: state.taskCompletions,
+        taskReminderHour: state.taskReminderHour,
         productUnits: state.productUnits,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
