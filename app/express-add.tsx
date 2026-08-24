@@ -299,26 +299,6 @@ export default function ExpressAddScreen() {
                     <Text className="text-[8px] font-black text-primary uppercase text-center">Nouveau contenant</Text>
                   </Pressable>
                 </View>
-                <View className="w-1/2 p-1.5">
-                  {/* Aucun bac choisi, mais l'étagère l'est : on transmet le
-                      chemin parcouru aux étapes 1-3. Sans lui, le formulaire
-                      repartait de zéro et retombait sur le premier bac de
-                      l'application — un support d'une autre zone. */}
-                  <Pressable
-                    onPress={() => router.push({
-                      pathname: '/add-product',
-                      params: {
-                        zoneId: selection.zoneId || '',
-                        unitId: selection.unitId || '',
-                        shelfId: selection.shelfId || '',
-                      },
-                    })}
-                    className="bg-gray-50 p-6 rounded-3xl border border-dashed border-gray-200 items-center gap-2"
-                  >
-                    <Plus size={24} color="#9CA3AF" />
-                    <Text className="text-[8px] font-black text-gray-400 uppercase text-center">Autre support</Text>
-                  </Pressable>
-                </View>
               </View>
             ) : (
               // Étagère vide : on crée le contenant sur place. Renvoyer vers

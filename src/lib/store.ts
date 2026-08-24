@@ -18,7 +18,6 @@ import {
   normalizeArticleName,
   roundQty,
   stockByArticle,
-  unitsCompatible,
 } from './inventory';
 
 // Rangement d'un article dans la structure — voir Article dans types.ts.
@@ -936,25 +935,18 @@ export const useStore = create<AppState & StoreActions>()(
         return id;
       },
 
-      // Le changement d'unité est le seul refus possible ici : passer de kg à
-      // "pce" alors que le registre contient des kilos rendrait tout
-      // l'historique de cet article illisible (rien ne convertit des pièces en
-      // kilos). Dans la même famille (kg ↔ g), c'est libre : la somme reconvertit
-      // chaque mouvement depuis l'unité qu'il a snapshottée.
+      // L'unité est librement modifiable, y compris vers une autre famille.
+      //
+      // Dans la même famille (kg ↔ g) c'est sans effet de bord : la somme
+      // reconvertit chaque mouvement depuis l'unité qu'il a snapshottée. D'une
+      // famille à l'autre (kg → pce), rien ne convertit des kilos en pièces :
+      // stockByArticle IGNORE alors les mouvements devenus inconvertibles, donc
+      // le stock ne compte plus que les nouveaux. Le refus a été retiré — c'est
+      // l'écran qui prévient (voir ArticlesManager), à l'utilisateur de décider.
       updateArticle: (id, patch) => {
         const state = get();
         const article = state.articles.find((a) => a.id === id);
         if (!article) return { ok: false, error: 'Article introuvable.' };
-
-        if (patch.unit && !unitsCompatible(patch.unit, article.unit)) {
-          const hasHistory = state.stockMovements.some((m) => m.articleId === id && !m.deletedAt);
-          if (hasHistory) {
-            return {
-              ok: false,
-              error: `Des mouvements de stock sont déjà enregistrés en ${article.unit} — impossible de passer en ${patch.unit}. Crée un nouvel article.`,
-            };
-          }
-        }
 
         if (patch.name !== undefined) {
           const clash = findArticleByName(state.articles, patch.name);

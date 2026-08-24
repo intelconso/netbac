@@ -64,6 +64,13 @@ npm test
   dans le store, sans écran — c'est le point de reprise quand un vrai inventaire
   physique sera nécessaire. Corollaire : les écrans d'inventaire sont en lecture
   seule, et aucune étiquette n'est modifiable nulle part dans l'app.
+  Un article ne se crée **que** depuis une étiquette (« Créer « … » » à
+  l'étiquetage, ou `importArticlesFromProducts`) : son unité est celle de
+  l'étiquette, il n'y a donc rien à deviner. Le catalogue ne sert qu'à RÉGLER —
+  catégorie, seuil, renommage, suppression. L'unité y est librement modifiable,
+  même vers une autre famille : `stockByArticle` ignore alors les mouvements
+  devenus inconvertibles (rien n'est effacé, revenir à l'unité d'origine
+  retrouve le stock) et l'écran prévient au lieu de refuser.
   Le catalogue est groupé par **catégorie** (`articleCategories`, liste plate,
   6 familles par défaut à ids fixes) et non plus par emplacement : une catégorie
   est intrinsèque à l'ingrédient, un emplacement est contingent — et un article

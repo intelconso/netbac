@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView, Modal } from 'react-native';
-import { Check, DownloadCloud, Package, Pencil, Plus, Trash2, X } from 'lucide-react-native';
+import { Check, DownloadCloud, Minus, Package, Pencil, Plus, Trash2, X } from 'lucide-react-native';
 import { useStore } from '../lib/store';
 import { cn } from '../lib/utils';
 import CategoryList, { groupKey } from './CategoryList';
@@ -8,7 +8,6 @@ import {
   DEFAULT_CATEGORY_COLOR,
   articleCategoryGroups,
   articleCategoryName,
-  findArticleByName,
   formatQty,
   isLowStock,
   stockByArticle,
@@ -20,6 +19,17 @@ import { ArticleCategory } from '../types';
 // Un article est défini à la granularité où on l'étiquette — "Poulet cru" et
 // "Poulet rôti" sont deux articles, parce que ce sont deux choses différentes
 // sur l'étagère.
+//
+// On ne CRÉE pas d'article ici : ils naissent d'une étiquette, depuis le
+// formulaire d'étiquetage (« Créer « … » ») ou par l'import ci-dessous. Créer à
+// la main obligeait à deviner l'unité avant d'avoir la moindre étiquette, et ce
+// choix se retournait ensuite contre l'étiquetage — une unité incompatible avec
+// celle qu'on voulait vraiment n'est plus proposée. Née d'une étiquette, l'unité
+// de l'article EST celle de l'étiquette : plus rien à deviner.
+//
+// L'écran reste celui où on RÈGLE les articles : catégorie, seuil d'alerte,
+// renommage, suppression. Le seuil surtout — sans lui un article n'alerte
+// jamais, et c'est tout l'intérêt de l'inventaire.
 //
 // Les articles sont groupés par CATÉGORIE — viandes, sauces, légumes… : on
 // ouvre la catégorie qu'on veut au lieu de dérouler tout le catalogue d'un bloc. Le
@@ -51,14 +61,6 @@ export default function ArticlesManager() {
 
   const [openKeys, setOpenKeys] = useState<Record<string, boolean>>({});
 
-  const [name, setName] = useState('');
-  const [unit, setUnit] = useState(productUnits[0] ?? 'kg');
-  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
-  const [minQty, setMinQty] = useState('');
-  // Le formulaire d'ajout reste replié : le catalogue est fait pour être lu
-  // bien plus souvent qu'alimenté.
-  const [adding, setAdding] = useState(false);
-
   const [editing, setEditing] = useState<{ id: string; name: string; unit: string; categoryId?: string; minQty: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,35 +69,6 @@ export default function ArticlesManager() {
   const parseMin = (raw: string): number | undefined => {
     const n = parseFloat(raw.replace(',', '.'));
     return Number.isFinite(n) && n >= 0 ? n : undefined;
-  };
-
-  const closeAdd = () => {
-    setAdding(false);
-    setName('');
-    setCategoryId(undefined);
-    setMinQty('');
-  };
-
-  // Les doublons se jugent sur le NOM SEUL, partout dans le catalogue — la
-  // catégorie n'entre pas dans la comparaison. Un même ingrédient classé deux fois
-  // resterait un ingrédient avec un seul total, donc on refuse le doublon.
-  //
-  // Le store dédoublonne déjà en silence (il rend l'article existant), ce qui est
-  // le bon comportement quand on crée une étiquette à la volée, mais illisible
-  // ici : le formulaire se viderait sans que rien n'apparaisse. On le dit, et on
-  // ouvre la catégorie de l'article existant pour qu'il soit sous les yeux.
-  const handleAdd = () => {
-    if (!name.trim()) return;
-    const clash = findArticleByName(live, name);
-    if (clash) {
-      setError(`« ${clash.name} » existe déjà — ${articleCategoryName(clash, categories)}.`);
-      setOpenKeys((st) => ({ ...st, [clash.categoryId ?? 'none']: true }));
-      return;
-    }
-    setError(null);
-    addArticle({ name, unit, categoryId, minQty: parseMin(minQty) });
-    setName('');
-    setMinQty('');
   };
 
   const saveEdit = () => {
@@ -184,7 +157,6 @@ export default function ArticlesManager() {
                       <Pressable
                         onPress={() => {
                           setError(null);
-                          setAdding(false);
                           setEditing({
                             id: a.id,
                             name: a.name,
@@ -215,26 +187,32 @@ export default function ArticlesManager() {
                       placeholder="Nom de l'article"
                       className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
                     />
+                    {/* Toutes les unités sont proposées, sans restriction. */}
                     <UnitPicker
                       units={productUnits}
                       value={editing.unit}
-                      // Une fois du stock enregistré, seule une unité de la même
-                      // famille reste proposée (kg ↔ g) : passer en "pce" rendrait
-                      // l'historique en kilos illisible. Le store refuse aussi.
-                      isBlocked={(u) => !unitsCompatible(u, a.unit) && hasHistory}
                       onPick={(u) => setEditing({ ...editing, unit: u })}
                     />
+                    {/* Changer de famille d'unité ne convertit rien : les
+                        mouvements déjà au registre deviennent incomptables. On
+                        le dit au lieu de l'interdire ou de le taire. */}
+                    {hasHistory && !unitsCompatible(editing.unit, a.unit) && (
+                      <View className="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                        <Text className="text-[10px] font-bold text-amber-800">
+                          Des mouvements sont enregistrés en {a.unit}. En passant en {editing.unit},
+                          ils ne seront plus comptés — le stock repartira des prochaines étiquettes.
+                        </Text>
+                      </View>
+                    )}
                     <CategoryPicker
                       categories={categories}
                       value={editing.categoryId}
                       onPick={(id) => setEditing({ ...editing, categoryId: id })}
                     />
-                    <TextInput
+                    <MinQtyStepper
                       value={editing.minQty}
-                      onChangeText={(v) => setEditing({ ...editing, minQty: v })}
-                      placeholder="Seuil d'alerte (optionnel)"
-                      keyboardType="decimal-pad"
-                      className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
+                      unit={editing.unit}
+                      onChange={(v) => setEditing({ ...editing, minQty: v })}
                     />
                   </View>
                 )}
@@ -247,7 +225,7 @@ export default function ArticlesManager() {
           <View className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 items-center gap-2">
             <Package size={20} color="#D1D5DB" />
             <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
-              Aucun article — importez-les ou ajoutez-en un
+              Aucun article — importez-les depuis les étiquettes
             </Text>
           </View>
         )}
@@ -314,48 +292,6 @@ export default function ArticlesManager() {
         </View>
       </Modal>
 
-      {adding ? (
-        <View className="bg-white p-3 rounded-2xl border-2 border-primary/20 gap-3">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-xs font-black text-gray-900 uppercase">Nouvel article</Text>
-            <Pressable onPress={closeAdd} className="w-9 h-9 rounded-xl bg-gray-50 items-center justify-center">
-              <X size={14} color="#9CA3AF" />
-            </Pressable>
-          </View>
-          <TextInput
-            value={name}
-            onChangeText={(v) => { setName(v); if (error) setError(null); }}
-            placeholder="Nom de l'article — ex. Poulet cru"
-            autoFocus
-            className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
-          />
-          <UnitPicker units={productUnits} value={unit} onPick={setUnit} />
-          <CategoryPicker categories={categories} value={categoryId} onPick={setCategoryId} />
-          <TextInput
-            value={minQty}
-            onChangeText={setMinQty}
-            placeholder="Seuil d'alerte (optionnel)"
-            keyboardType="decimal-pad"
-            className="p-3 bg-gray-50 rounded-xl text-sm font-bold"
-          />
-          <Pressable
-            onPress={handleAdd}
-            disabled={!name.trim()}
-            className={cn('py-3 bg-primary rounded-xl flex-row items-center justify-center gap-2', !name.trim() && 'opacity-40')}
-          >
-            <Plus size={14} color="#fff" />
-            <Text className="text-[10px] font-black text-white uppercase">Ajouter</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <Pressable
-          onPress={() => { setAdding(true); setEditing(null); setError(null); }}
-          className="bg-primary py-4 rounded-2xl flex-row items-center justify-center gap-2"
-        >
-          <Plus size={16} color="#fff" />
-          <Text className="text-[10px] font-black text-white uppercase tracking-widest">Nouvel article</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -407,12 +343,10 @@ function UnitPicker({
   units,
   value,
   onPick,
-  isBlocked,
 }: {
   units: string[];
   value: string;
   onPick: (unit: string) => void;
-  isBlocked?: (unit: string) => boolean;
 }) {
   return (
     <View className="gap-1">
@@ -420,16 +354,13 @@ function UnitPicker({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
         {units.map((u) => {
           const active = value === u;
-          const blocked = isBlocked?.(u) ?? false;
           return (
             <Pressable
               key={u}
-              disabled={blocked}
               onPress={() => onPick(u)}
               className={cn(
                 'px-4 py-2.5 rounded-xl border',
-                active ? 'bg-primary border-primary' : 'bg-gray-50 border-gray-100',
-                blocked && 'opacity-30'
+                active ? 'bg-primary border-primary' : 'bg-gray-50 border-gray-100'
               )}
             >
               <Text className={cn('font-bold text-xs', active ? 'text-white' : 'text-gray-900')}>{u}</Text>
@@ -437,6 +368,60 @@ function UnitPicker({
           );
         })}
       </ScrollView>
+    </View>
+  );
+}
+
+// Seuil d'alerte, au pas de 1. Les flèches couvrent le geste courant (monter
+// ou descendre d'un cran) sans empêcher de taper une valeur précise.
+//
+// Vide et « 0 » ne veulent PAS dire la même chose : vide = pas de seuil, donc
+// l'article n'alerte jamais ; 0 = alerte à la rupture. D'où le placeholder à
+// « 0 » plutôt qu'une valeur imposée — on n'invente pas un seuil que personne
+// n'a réglé.
+function MinQtyStepper({
+  value,
+  unit,
+  onChange,
+}: {
+  value: string;
+  unit: string;
+  onChange: (value: string) => void;
+}) {
+  const current = parseFloat(value.replace(',', '.'));
+  const step = (delta: number) => {
+    const base = Number.isFinite(current) ? current : 0;
+    onChange(String(Math.max(0, Math.round((base + delta) * 1000) / 1000)));
+  };
+
+  return (
+    <View className="gap-1">
+      <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+        Seuil d'alerte <Text className="text-gray-300">(optionnel)</Text>
+      </Text>
+      <View className="flex-row items-center gap-2">
+        <Pressable
+          onPress={() => step(-1)}
+          disabled={!Number.isFinite(current) || current <= 0}
+          className={cn(
+            'w-11 h-11 rounded-xl bg-gray-50 items-center justify-center',
+            (!Number.isFinite(current) || current <= 0) && 'opacity-30'
+          )}
+        >
+          <Minus size={16} color="#6B7280" />
+        </Pressable>
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder="0"
+          keyboardType="decimal-pad"
+          className="flex-1 p-3 bg-gray-50 rounded-xl text-sm font-black text-center"
+        />
+        <Text className="text-[10px] font-black text-gray-400 uppercase w-10">{unit}</Text>
+        <Pressable onPress={() => step(1)} className="w-11 h-11 rounded-xl bg-gray-50 items-center justify-center">
+          <Plus size={16} color="#6B7280" />
+        </Pressable>
+      </View>
     </View>
   );
 }

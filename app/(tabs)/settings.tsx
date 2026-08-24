@@ -100,7 +100,7 @@ export default function SettingsScreen() {
           setDrillDown({});
           return true;
         }
-        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays' || section === 'pestControl' || section === 'employees' || section === 'tasks' ||
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays' || section === 'pestControl' || section === 'employees' ||
             section === 'articleCategories') {
           setSection('custom');
           return true;
@@ -165,15 +165,15 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'articles' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'articles' | 'tasks' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
+    { id: 'tasks', label: 'Tâches', description: "Checklist de l'équipe & rappel quotidien", icon: ListChecks },
     { id: 'articles', label: 'Gestion de stock', description: "Catalogue d'ingrédients suivis en stock", icon: Package },
     { id: 'custom', label: 'Personnalisation', description: "Unités, catégories, types d'action", icon: Tag },
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
-  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl' | 'employees' | 'tasks' | 'articleCategories'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
-    { id: 'tasks', label: 'Tâches', description: "Checklist de l'équipe & rappel quotidien", icon: ListChecks },
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl' | 'employees' | 'articleCategories'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'employees', label: 'Équipe', description: 'Qui peut cocher les tâches', icon: Users },
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
     { id: 'articleCategories', label: 'Catégories', description: "Classement des articles de l'inventaire", icon: Layers },
@@ -812,9 +812,10 @@ export default function SettingsScreen() {
       },
     } as const;
     const manager = managers[section];
-    // Articles est une entrée de premier niveau des Paramètres, Tâches et
-    // Équipe vivent sous Personnalisation : le retour suit d'où on vient.
-    const parent = section === 'articles' ? 'menu' : 'custom';
+    // Articles et Tâches sont des entrées de premier niveau des Paramètres,
+    // Équipe et Catégories vivent sous Personnalisation : le retour suit d'où
+    // l'on vient.
+    const parent = section === 'articles' || section === 'tasks' ? 'menu' : 'custom';
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
         <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">

@@ -190,12 +190,30 @@ describe('catalogue d’articles', () => {
     expect(onHand(articleId)).toBe(2000);
   });
 
-  it('refuse un changement d’unité qui rendrait l’historique illisible', () => {
+  // L'unité est libre, même vers une autre famille : c'est un choix assumé,
+  // l'écran prévient. Rien ne convertit des kilos en pièces, donc les mouvements
+  // déjà au registre cessent simplement d'être comptés — ils ne sont ni
+  // supprimés ni comptés de travers.
+  it('autorise un changement d’unité vers une autre famille', () => {
     const { articleId } = setup();
+    expect(onHand(articleId)).toBe(2);
+
     const res = useStore.getState().updateArticle(articleId, { unit: 'pce' });
-    expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/kg/);
-    expect(useStore.getState().articles.find((a) => a.id === articleId)?.unit).toBe('kg');
+    expect(res.ok).toBe(true);
+    expect(useStore.getState().articles.find((a) => a.id === articleId)?.unit).toBe('pce');
+
+    // Les kilos ne sont plus comptables en pièces : le stock repart de zéro.
+    expect(onHand(articleId)).toBe(0);
+    // Mais l'historique est intact — rien n'a été effacé.
+    expect(liveMovements().filter((m) => m.articleId === articleId)).toHaveLength(1);
+  });
+
+  it('revenir à l’unité d’origine retrouve le stock', () => {
+    const { articleId } = setup();
+    useStore.getState().updateArticle(articleId, { unit: 'pce' });
+    expect(onHand(articleId)).toBe(0);
+    useStore.getState().updateArticle(articleId, { unit: 'kg' });
+    expect(onHand(articleId)).toBe(2);
   });
 
   it('autorise le changement d’unité tant qu’il n’y a pas d’historique', () => {
