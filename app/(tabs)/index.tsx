@@ -63,6 +63,39 @@ function Tile({ icon: Icon, title, subtitle, tone, count, onPress }: TileProps) 
   );
 }
 
+// Tuile compacte de navigation : icône et libellé centrés, pas de sous-titre.
+// Trois tiennent sur une ligne — assez large pour un pouce, assez discret pour
+// ne pas concurrencer les quatre tuiles d'action du haut.
+function MiniTile({ icon: Icon, title, tone, count, onPress }: Omit<TileProps, 'subtitle'>) {
+  const t = TONES[tone];
+  return (
+    <Pressable
+      onPress={onPress}
+      className={cn('flex-1 rounded-3xl px-2 py-4 items-center justify-center gap-2', t.bordered && 'border border-gray-100')}
+      style={{ backgroundColor: t.bg, minHeight: 96 }}
+    >
+      <View className="w-11 h-11 rounded-2xl items-center justify-center" style={{ backgroundColor: t.iconBg }}>
+        <Icon size={22} color={t.icon} />
+        {!!count && (
+          <View
+            className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full items-center justify-center"
+            style={{ backgroundColor: t.bordered ? '#EF4444' : '#FFFFFF' }}
+          >
+            <Text className="text-[10px] font-black" style={{ color: t.bordered ? '#FFFFFF' : t.bg }}>{count}</Text>
+          </View>
+        )}
+      </View>
+      <Text
+        className="text-[10px] font-black uppercase tracking-wide text-center"
+        style={{ color: t.title }}
+        numberOfLines={2}
+      >
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const {
@@ -154,7 +187,7 @@ export default function HomeScreen() {
         </Text>
       </View>
 
-      {/* Raccourcis — grille 2 × 3 */}
+      {/* Raccourcis — grille 2 × 2 */}
       <View className="flex-row gap-4">
         <View className="flex-1">
           <Tile
@@ -206,46 +239,8 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View className="flex-row gap-4">
-        <View className="flex-1">
-          <Tile
-            icon={Eye}
-            title="Vue spatiale"
-            subtitle="Zones & contenants"
-            tone="blue"
-            onPress={() => router.push('/spatial' as any)}
-          />
-        </View>
-        <View className="flex-1">
-          <Tile
-            icon={FileText}
-            title="Rapports"
-            subtitle="PDF HACCP"
-            tone="ok"
-            onPress={() => router.push('/reports' as any)}
-          />
-        </View>
-      </View>
-
-      {/* Inventaire — pleine largeur pour ne pas déranger la grille 2 × 3
-          au-dessus, dont l'intérêt est justement de ne jamais bouger. */}
-      <View>
-        <Tile
-          icon={Boxes}
-          title="Inventaire"
-          subtitle={articles.length === 0
-            ? 'Suivi des articles'
-            : lowStock.length > 0
-              ? `${lowStock.length} article${lowStock.length > 1 ? 's' : ''} sous le seuil`
-              : `${articles.length} article${articles.length > 1 ? 's' : ''} suivi${articles.length > 1 ? 's' : ''}`}
-          tone={lowStock.length > 0 ? 'alert' : articles.length > 0 ? 'ok' : 'neutral'}
-          count={lowStock.length}
-          onPress={() => router.push('/inventory' as any)}
-        />
-      </View>
-
-      {/* Stats */}
-      <View className="flex-row gap-4 mt-2">
+      {/* Stats — le bilan des étiquettes, juste sous les tuiles d'action. */}
+      <View className="flex-row gap-4 mt-1">
         <Pressable
           onPress={() => router.push('/(tabs)/labels' as any)}
           className="flex-1 bg-white rounded-3xl border border-gray-100 p-5 items-center gap-1 active:bg-gray-50"
@@ -260,6 +255,29 @@ export default function HomeScreen() {
           <Text className="text-3xl font-black text-primary">{todayCount}</Text>
           <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Aujourd'hui</Text>
         </Pressable>
+      </View>
+
+      {/* Navigation secondaire — trois tuiles compactes de même largeur. */}
+      <View className="flex-row gap-4 mt-1">
+        <MiniTile
+          icon={Eye}
+          title="Vue spatiale"
+          tone="blue"
+          onPress={() => router.push('/spatial' as any)}
+        />
+        <MiniTile
+          icon={FileText}
+          title="Rapports"
+          tone="ok"
+          onPress={() => router.push('/reports' as any)}
+        />
+        <MiniTile
+          icon={Boxes}
+          title="Inventaire"
+          tone={lowStock.length > 0 ? 'alert' : articles.length > 0 ? 'ok' : 'neutral'}
+          count={lowStock.length}
+          onPress={() => router.push('/inventory' as any)}
+        />
       </View>
     </ScrollView>
   );
