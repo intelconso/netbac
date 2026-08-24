@@ -1,39 +1,61 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Image, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { ArrowLeft, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft, Camera, ImagePlus, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Boxes, Check, Calendar, Package, Eye, MapPin, ChevronRight, X, ChevronLeft, Camera, ImagePlus, Plus, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { persistCapturedPhoto, processPhotoQueue } from '../src/lib/photoQueue';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
-import { ActionType } from '../src/types';
+import { ActionType, Article, ContainerType } from '../src/types';
 import { ACTION_TYPES, getAvailableActionTypes } from '../src/lib/actionTypes';
+import CreateBacModal from '../src/components/CreateBacModal';
 import { validateCoolingCycle, computeCoolingDlc } from '../src/lib/cooling';
+import { findArticleByName, normalizeArticleName, unitsCompatible } from '../src/lib/inventory';
 import { addDays, startOfDay, addMonths, startOfMonth, endOfMonth, getDay, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import ProductLabel from '../src/components/ProductLabel';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const SUGGESTIONS = ['Poulet blanc', 'Escalope', 'Poulet rôti', 'Aiguillettes', 'Cuisse de poulet'];
-
 export default function AddProductScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ bacId?: string; editMode?: string; productId?: string; zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, addProduct, updateProduct, enqueuePendingPhoto, products, user, productUnits: UNITS, customActionTypes, defaultActionTypeStates } = useActiveStore();
+  const { zones, storageUnits, shelves, bacs, addBac, addProduct, updateProduct, enqueuePendingPhoto, products, user, productUnits: UNITS, customActionTypes, defaultActionTypeStates, articles, addArticle } = useActiveStore();
   const availableActionTypes = getAvailableActionTypes({ customActionTypes, defaultActionTypeStates });
 
   const editMode = params.editMode === 'true';
   const existingProduct = params.productId ? products.find((p) => p.id === params.productId) : null;
-  const initialBacId = params.bacId || existingProduct?.bacId || bacs[0]?.id || '';
+  // Pas de repli sur `bacs[0]` : deviner un support place l'étiquette dans une
+  // autre zone sans rien dire. Sans bac transmis, on n'en présélectionne aucun —
+  // le formulaire refuse déjà d'enregistrer sans emplacement.
+  const initialBacId = params.bacId || existingProduct?.bacId || '';
   const initialBac = bacs.find((b) => b.id === initialBacId);
 
   const [bacId, setBacId] = useState(initialBacId);
-  const [isSelectingBac, setIsSelectingBac] = useState(false);
-  const [selectionPath, setSelectionPath] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>({});
+  // Arrivé sans bac mais avec un contexte : il reste un support à choisir, donc
+  // on ouvre le sélecteur au lieu d'exiger un tap de plus.
+  const [isSelectingBac, setIsSelectingBac] = useState(!params.bacId && !!params.unitId && !existingProduct);
+  // Étagère sur laquelle on crée un contenant, ou null. Créer ici plutôt que de
+  // renvoyer vers Paramètres : quitter l'écran perdrait le nom, la quantité, la
+  // DLC et la photo déjà saisis.
+  const [creatingBacOnShelf, setCreatingBacOnShelf] = useState<string | null>(null);
+  // Chemin déjà parcouru avant d'arriver ici (express-add étapes 1-3).
+  //
+  // On reprend à la ZONE et à l'ENCEINTE, pas à l'étagère : « Autre support »
+  // se tape justement quand aucun bac de l'étagère ne convient. Rouvrir sur ces
+  // mêmes bacs afficherait ce qu'on vient de refuser ; on remonte donc d'un
+  // cran, sur la liste des étagères de l'enceinte, sans refaire les deux
+  // premières étapes.
+  const [selectionPath, setSelectionPath] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>({
+    ...(params.zoneId ? { zoneId: params.zoneId } : {}),
+    ...(params.unitId ? { unitId: params.unitId } : {}),
+  });
 
   const [name, setName] = useState(existingProduct?.name || (params.bacId ? (initialBac?.name || '') : ''));
   const [quantity, setQuantity] = useState(existingProduct?.quantity.toString() || '');
   const [unit, setUnit] = useState(existingProduct?.unit || 'kg');
+  // Article d'inventaire que cette étiquette consomme. Optionnel : sans lui,
+  // l'étiquette fonctionne exactement comme avant et ne bouge aucun stock.
+  const [articleId, setArticleId] = useState<string | undefined>(existingProduct?.articleId);
   const [dlc, setDlc] = useState<number>(existingProduct?.dlc || addDays(startOfDay(new Date()), 3).getTime());
   const [actionType, setActionType] = useState<ActionType>(existingProduct?.actionType || 'received');
   const [temperature, setTemperature] = useState(existingProduct?.temperature?.toString() || '');
@@ -103,6 +125,42 @@ export default function AddProductScreen() {
     }, [showCalendar, duplicateId, isSelectingBac, selectionPath])
   );
 
+  const article = articles.find((a) => a.id === articleId);
+
+  // Articles proposés sous le champ nom : ceux qui correspondent à ce qui est
+  // tapé, sinon les plus utilisés. C'est ce qui remplace l'ancienne liste de
+  // suggestions en dur — le catalogue se construit tout seul à l'usage.
+  const articleSuggestions = useMemo(() => {
+    const usage = new Map<string, number>();
+    for (const p of products) if (p.articleId) usage.set(p.articleId, (usage.get(p.articleId) ?? 0) + 1);
+    const query = normalizeArticleName(name);
+    const pool = query
+      ? articles.filter((a) => normalizeArticleName(a.name).includes(query))
+      : [...articles];
+    return pool
+      .sort((a, b) => (usage.get(b.id) ?? 0) - (usage.get(a.id) ?? 0) || a.name.localeCompare(b.name))
+      .slice(0, 8);
+  }, [articles, products, name]);
+
+  const exactArticle = useMemo(() => findArticleByName(articles, name), [articles, name]);
+
+  // L'unité de l'étiquette doit rester convertible vers l'unité de stock de
+  // l'article (kg ↔ g), sinon le mouvement ne pourrait pas être compté.
+  const availableUnits = article ? UNITS.filter((u) => unitsCompatible(u, article.unit)) : UNITS;
+
+  const pickArticle = (a: Article) => {
+    setName(a.name);
+    setArticleId(a.id);
+    if (!unitsCompatible(unit, a.unit)) setUnit(a.unit);
+  };
+
+  // Création à la volée depuis le nom tapé : un tap, et l'étiquette alimente le
+  // stock. Le store dédoublonne sur le nom, donc c'est sans risque de doublon.
+  const createArticleFromName = () => {
+    if (!name.trim()) return;
+    setArticleId(addArticle({ name, unit }));
+  };
+
   const handleActionTypeChange = (type: string) => {
     setActionType(type as ActionType);
     setCoolingErrors([]);
@@ -145,11 +203,18 @@ export default function AddProductScreen() {
       setDuplicateId(dupe.id);
       return;
     }
+    // Un nom tapé qui tombe pile sur un article existant est rattaché sans
+    // rien demander — c'est le cas courant, et le laisser non rattaché ferait
+    // silencieusement diverger le stock.
+    const resolvedArticleId = articleId ?? findArticleByName(articles, name)?.id;
     const productData: any = {
       bacId, name,
       quantity: parseFloat(quantity), unit, dlc: dlcToSave, actionType,
       ...coolingFields,
     };
+    // Assigné inconditionnellement pour que détacher l'article en édition le
+    // retire vraiment — même raison que photoUrl juste en dessous.
+    productData.articleId = resolvedArticleId;
     if (temperature) productData.temperature = parseFloat(temperature);
     if (origin) productData.origin = origin;
     // Assigned unconditionally so clearing the photo on edit actually removes it
@@ -172,10 +237,26 @@ export default function AddProductScreen() {
     }, 1200);
   };
 
+  // Le contenant créé est sélectionné dans la foulée : c'est la raison pour
+  // laquelle on l'a créé, l'utilisateur n'a pas à le retrouver dans la liste.
+  const handleCreateBac = (shelfId: string, name: string, type: ContainerType) => {
+    const newId = addBac({ shelfId, name, type });
+    setCreatingBacOnShelf(null);
+    setBacId(newId);
+    setIsSelectingBac(false);
+    setSelectionPath({});
+  };
+
   const selectedBac = bacs.find((b) => b.id === bacId);
   const selectedShelf = shelves.find((s) => s.id === selectedBac?.shelfId);
   const selectedUnit = storageUnits.find((u) => u.id === selectedShelf?.unitId);
   const selectedZone = zones.find((z) => z.id === selectedUnit?.zoneId);
+
+  // L'étagère de travail : celle du bac choisi, sinon celle d'où l'on vient.
+  const contextShelfId = selectedBac?.shelfId ?? params.shelfId;
+  const shortcutBacs = contextShelfId
+    ? bacs.filter((b) => b.shelfId === contextShelfId)
+    : bacs.slice(0, 5);
 
   const missingFields: string[] = [];
   if (!name.trim()) missingFields.push('Nom');
@@ -235,8 +316,10 @@ export default function AddProductScreen() {
               </View>
               <ChevronRight size={16} color="#D1D5DB" />
             </Pressable>
+            {/* Raccourcis : les supports de l'étagère courante, pas les cinq
+                premiers de l'application — qui pouvaient être d'une autre zone. */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-              {bacs.slice(0, 5).map((bac) => (
+              {shortcutBacs.map((bac) => (
                 <Pressable
                   key={bac.id} onPress={() => setBacId(bac.id)}
                   className={cn('px-3 py-2 rounded-xl border-2', bacId === bac.id ? 'bg-primary/5 border-primary' : 'bg-white border-gray-100')}
@@ -298,12 +381,51 @@ export default function AddProductScreen() {
               />
               <View className="absolute left-4 top-4"><Package size={20} color="#D1D5DB" /></View>
             </View>
+
+            {/* Rattachement à l'inventaire. Sans article, l'étiquette marche
+                comme avant — elle ne suit simplement aucun stock. */}
+            {article ? (
+              <View className="flex-row items-center gap-3 bg-primary/5 border border-primary/20 p-3 rounded-2xl">
+                <View className="w-9 h-9 rounded-xl bg-primary/10 items-center justify-center">
+                  <Boxes size={16} color="#10B981" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[9px] font-bold text-primary uppercase tracking-widest">Suivi en stock</Text>
+                  <Text className="text-xs font-black text-gray-900 uppercase" numberOfLines={1}>
+                    {article.name} · {article.unit}
+                  </Text>
+                </View>
+                <Pressable onPress={() => setArticleId(undefined)} className="w-9 h-9 rounded-xl bg-white items-center justify-center">
+                  <X size={14} color="#9CA3AF" />
+                </Pressable>
+              </View>
+            ) : (
+              <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                Aucun article — cette étiquette ne suivra pas de stock
+              </Text>
+            )}
+
             <View className="flex-row flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
-                <Pressable key={s} onPress={() => setName(s)} className={cn('px-3 py-1.5 rounded-lg', name === s ? 'bg-primary' : 'bg-gray-100')}>
-                  <Text className={cn('text-[10px] font-bold uppercase', name === s ? 'text-white' : 'text-gray-500')}>{s}</Text>
+              {articleSuggestions.map((a) => (
+                <Pressable
+                  key={a.id}
+                  onPress={() => pickArticle(a)}
+                  className={cn('px-3 py-1.5 rounded-lg', articleId === a.id ? 'bg-primary' : 'bg-gray-100')}
+                >
+                  <Text className={cn('text-[10px] font-bold uppercase', articleId === a.id ? 'text-white' : 'text-gray-500')}>
+                    {a.name}
+                  </Text>
                 </Pressable>
               ))}
+              {!!name.trim() && !exactArticle && (
+                <Pressable
+                  onPress={createArticleFromName}
+                  className="px-3 py-1.5 rounded-lg bg-white border-2 border-dashed border-primary/40 flex-row items-center gap-1"
+                >
+                  <Plus size={10} color="#10B981" />
+                  <Text className="text-[10px] font-bold uppercase text-primary">Créer « {name.trim()} »</Text>
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -352,7 +474,7 @@ export default function AddProductScreen() {
             <View className="flex-1 gap-3">
               <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Unité</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                {UNITS.map((u) => (
+                {availableUnits.map((u) => (
                   <Pressable key={u} onPress={() => setUnit(u)} className={cn('px-4 py-4 rounded-2xl border', unit === u ? 'bg-primary border-primary' : 'bg-white border-gray-100')}>
                     <Text className={cn('font-bold text-xs', unit === u ? 'text-white' : 'text-gray-900')}>{u}</Text>
                   </Pressable>
@@ -536,6 +658,29 @@ export default function AddProductScreen() {
                   {bacId === bac.id && <Check size={16} color="#10B981" />}
                 </Pressable>
               ))}
+
+              {/* Une étagère sans contenant n'est plus un cul-de-sac : on en
+                  crée un ici, sans quitter l'étiquette en cours. */}
+              {selectionPath.shelfId && (
+                <>
+                  {bacs.filter((b) => b.shelfId === selectionPath.shelfId).length === 0 && (
+                    <View className="items-center gap-1 py-4">
+                      <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">
+                        Aucun contenant sur cette étagère
+                      </Text>
+                    </View>
+                  )}
+                  <Pressable
+                    onPress={() => setCreatingBacOnShelf(selectionPath.shelfId!)}
+                    className="p-4 rounded-2xl border-2 border-dashed border-primary/40 flex-row items-center justify-center gap-2"
+                  >
+                    <Plus size={16} color="#10B981" />
+                    <Text className="text-[10px] font-black text-primary uppercase tracking-widest">
+                      Nouveau contenant
+                    </Text>
+                  </Pressable>
+                </>
+              )}
             </ScrollView>
           </View>
         </View>
@@ -604,6 +749,12 @@ export default function AddProductScreen() {
           </View>
         </View>
       </Modal>
+
+      <CreateBacModal
+        shelfId={creatingBacOnShelf}
+        onClose={() => setCreatingBacOnShelf(null)}
+        onSubmit={handleCreateBac}
+      />
     </SafeAreaView>
   );
 }

@@ -2,6 +2,7 @@ import '../global.css';
 import React, { Component, ErrorInfo, ReactNode, useEffect } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
@@ -89,6 +90,8 @@ function AuthGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// Marqueur local du rattrapage d'emplacement des articles — voir plus bas.
+
 function RootInner() {
   const products = useStore((s) => s.products);
   const tasks = useStore((s) => s.tasks);
@@ -144,6 +147,8 @@ function RootInner() {
             <Stack.Screen name="controls-history" />
             <Stack.Screen name="tasks" />
             <Stack.Screen name="reports" />
+            <Stack.Screen name="inventory/index" />
+            <Stack.Screen name="inventory/[id]" />
             <Stack.Screen name="camera" />
           </Stack>
         </AuthGate>

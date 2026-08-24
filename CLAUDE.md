@@ -48,4 +48,24 @@ npm test
 
 ## Open status
 
-Populate this section as work progresses (current sprint, known bugs, upcoming features).
+- **Inventaire v1 (2026-08-24)** — suivi de stock par article, alimenté **uniquement**
+  par les étiquettes. Le stock n'est jamais stocké : il est dérivé d'un registre
+  append-only (`AppState.stockMovements`) parce qu'un compteur se corromprait sous
+  l'union-merge de `sync.ts`. Toute la logique pure est dans
+  [inventory.ts](src/lib/inventory.ts) ; les écritures passent par
+  `reconcileProductMovements` dans [store.ts](src/lib/store.ts) — y compris les
+  suppressions en cascade d'un emplacement (`tombProductsWhere`), sans quoi une
+  étiquette supprimée laissait son entrée au registre.
+  Règle en place : **toute création d'étiquette fait entrer du stock** — voir
+  `createsStockIn()`, seul endroit à changer pour ne compter que les livraisons.
+  **Aucune saisie manuelle de quantité** : une quantité tapée à la main n'apprend
+  rien (il a fallu regarder l'étagère) et s'ajoutait à celle des étiquettes, donc
+  comptait deux fois le même stock. `addStockMovement` / `setStockCount` restent
+  dans le store, sans écran — c'est le point de reprise quand un vrai inventaire
+  physique sera nécessaire. Corollaire : les écrans d'inventaire sont en lecture
+  seule, et aucune étiquette n'est modifiable nulle part dans l'app.
+  Le catalogue est groupé par **catégorie** (`articleCategories`, liste plate,
+  6 familles par défaut à ids fixes) et non plus par emplacement : une catégorie
+  est intrinsèque à l'ingrédient, un emplacement est contingent — et un article
+  rangé dans une zone sans bac ne pouvait jamais recevoir d'étiquette. Les champs
+  `zoneId`/`unitId`/`shelfId`/`bacId` de `Article` restent lisibles mais dormants.

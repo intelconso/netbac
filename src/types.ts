@@ -56,6 +56,11 @@ export interface Product {
   id: string;
   bacId: string;
   name: string;
+  // Article du catalogue d'inventaire que cette étiquette consomme. Optionnel :
+  // les étiquettes d'avant l'inventaire (et celles saisies en texte libre) n'en
+  // ont pas et ne bougent simplement aucun stock. Le rattachement se fait à la
+  // création, ou après coup depuis le gestionnaire d'articles.
+  articleId?: string;
   quantity: number;
   unit: string; // kg, g, l, ml, piece, broche, etc.
   dlc: number; // Timestamp
@@ -371,6 +376,101 @@ export interface PestControlCheck {
   deletedAt?: number;
 }
 
+// Inventaire — suivi du stock des articles du restaurant.
+//
+// Un article est un ingrédient du catalogue ("Poulet cru", "Poulet rôti"…) :
+// le niveau auquel on étiquette, donc le niveau auquel on compte. Deux états
+// d'un même produit (cru / cuit) sont deux articles DISTINCTS — sinon une
+// étiquette "Cuit" créée après une étiquette "Reçu" compterait deux fois le
+// même poulet. Lier les deux (1 poulet rôti = 2 kg de poulet cru) serait une
+// recette, hors périmètre pour l'instant.
+//
+// Les articles ne portent pas de catégorie libre : ils sont rangés DANS LA
+// STRUCTURE — zone, enceinte, étagère, bac — c'est là qu'on stocke
+// l'ingrédient, et c'est ce qui groupe le catalogue au lieu d'en faire une
+// liste à plat.
+//
+// `unit` est l'unité de stock : c'est dans cette unité qu'on lit le stock.
+// Les étiquettes peuvent utiliser une unité de la même famille (kg ↔ g,
+// L ↔ ml), la conversion est faite à la lecture (voir inventory.ts).
+// Catégorie d'articles — viandes, sauces, légumes… Un axe de classement choisi
+// par l'utilisateur, VOLONTAIREMENT sans rapport avec la structure physique.
+//
+// Une catégorie est intrinsèque à l'ingrédient ("le poulet est une viande",
+// toujours vrai) là où un emplacement est contingent ("il est au Frigo 2",
+// vrai jusqu'à ce qu'on le déplace). Classer par emplacement menait à des
+// impasses : un article rangé dans une zone sans bac ne pouvait jamais
+// recevoir d'étiquette, puisqu'une étiquette vit forcément dans un bac.
+//
+// Liste plate, jamais imbriquée : la hiérarchie est exactement ce qui posait
+// problème.
+export interface ArticleCategory {
+  id: string;
+  name: string;
+  color?: string;       // pastille de couleur dans les listes ; défaut si absent
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+export interface Article {
+  id: string;
+  name: string;
+  unit: string;         // unité de stock, prise dans AppState.productUnits
+  // Catégorie de l'article (voir ArticleCategory). `undefined` = non classé :
+  // l'article apparaît alors dans « Sans catégorie », jamais masqué.
+  categoryId?: string;
+  // Ancien classement par emplacement physique. Plus aucune UI ne l'écrit
+  // depuis le passage aux catégories, et l'inventaire ne groupe plus dessus.
+  // Les champs restent lisibles pour ne pas perdre ce qui a pu être saisi, et
+  // parce que les helpers de localisation d'inventory.ts s'en servent encore.
+  zoneId?: string;
+  unitId?: string;
+  shelfId?: string;
+  bacId?: string;
+  minQty?: number;      // seuil d'alerte ; undefined = pas d'alerte
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Sens d'un mouvement de stock.
+// in        : entrée — étiquette "Reçu" créée, ou saisie manuelle
+// out_used  : sortie — étiquette marquée utilisée
+// out_waste : perte  — étiquette marquée jetée (c'est le registre des pertes)
+// adjust    : quantité modifiée à la main — SEUL cas où `qty` est signé
+export type StockMovementKind = 'in' | 'out_used' | 'out_waste' | 'adjust';
+
+// Une ligne du registre de stock. Le registre est append-only : le stock n'est
+// jamais stocké, il est recalculé en sommant les mouvements (voir inventory.ts,
+// qui explique pourquoi un compteur stocké se corromprait avec la synchro).
+//
+// Comme les contrôles du registre papier, un mouvement snapshotte le nom et
+// l'unité de l'article : renommer ou supprimer un article n'efface jamais
+// l'historique de ce qui est entré et sorti.
+export interface StockMovement {
+  // Déterministe quand le mouvement naît d'une étiquette — `mv-${productId}-${kind}`,
+  // voir movementId(). Deux appareils qui marquent la même étiquette utilisée
+  // convergent sur UN mouvement au lieu de décrémenter deux fois. Même principe
+  // que taskCompletionId(). Les saisies manuelles prennent un randomId().
+  id: string;
+  articleId: string;
+  articleName: string;  // snapshot du nom au moment du mouvement
+  unit: string;         // snapshot de l'unité — la somme reconvertit si besoin
+  kind: StockMovementKind;
+  // Magnitude positive pour in / out_used / out_waste — c'est `kind` qui porte
+  // le sens. Pour `adjust`, l'écart est signé (un inventaire peut corriger dans
+  // les deux sens). signedQty() est le seul endroit qui connaît cette règle.
+  qty: number;
+  timestamp: number;
+  // L'étiquette à l'origine du mouvement, quand il y en a une. Permet de
+  // remonter du registre de stock vers l'étiquette, et de retirer le mouvement
+  // si l'étiquette est supprimée.
+  productId?: string;
+  operatorName?: string;
+  notes?: string;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CustomActionType {
   id: string;
   label: string;
@@ -462,6 +562,15 @@ export interface AppState {
   taskCompletions: TaskCompletion[];
   taskReminderHour?: number;
   productUnits: string[];
+  // Inventaire. `articles` est le catalogue (admin), `stockMovements` le
+  // registre append-only dont le stock est dérivé. Les deux sont `undefined`
+  // sur un état d'avant la fonctionnalité — toujours lire via useActiveStore
+  // ou avec `?? []`.
+  articles: Article[];
+  stockMovements: StockMovement[];
+  // Catégories d'articles (voir ArticleCategory). `undefined` sur un état
+  // d'avant la fonctionnalité — lire via useActiveStore ou avec `?? []`.
+  articleCategories: ArticleCategory[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];
   user: User | null;

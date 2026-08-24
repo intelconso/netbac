@@ -1,12 +1,13 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks } from 'lucide-react-native';
+import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks, Boxes } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
 import { resolveTempUnits } from '../../src/lib/tempUnits';
 import { dayStatus, startOfDayMs } from '../../src/lib/serviceDays';
 import { pendingTaskCount } from '../../src/lib/tasks';
+import { lowStockArticles } from '../../src/lib/inventory';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -67,7 +68,7 @@ export default function HomeScreen() {
   const {
     products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas,
     storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides,
-    tasks, taskCompletions,
+    tasks, taskCompletions, articles, stockMovements,
   } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
@@ -118,6 +119,10 @@ export default function HomeScreen() {
     [tasks, taskCompletions, closedWeekdays, singleServiceWeekdays, dayOverrides]
   );
   const hasTasks = tasks.length > 0;
+
+  // Articles dont le stock a atteint le seuil réglé — le compte de la tuile
+  // Stock. Sans seuil réglé, un article n'alerte jamais (voir inventory.ts).
+  const lowStock = useMemo(() => lowStockArticles(articles, stockMovements), [articles, stockMovements]);
 
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
@@ -206,7 +211,7 @@ export default function HomeScreen() {
           <Tile
             icon={Eye}
             title="Vue spatiale"
-            subtitle="Inventaire"
+            subtitle="Zones & contenants"
             tone="blue"
             onPress={() => router.push('/spatial' as any)}
           />
@@ -220,6 +225,23 @@ export default function HomeScreen() {
             onPress={() => router.push('/reports' as any)}
           />
         </View>
+      </View>
+
+      {/* Inventaire — pleine largeur pour ne pas déranger la grille 2 × 3
+          au-dessus, dont l'intérêt est justement de ne jamais bouger. */}
+      <View>
+        <Tile
+          icon={Boxes}
+          title="Inventaire"
+          subtitle={articles.length === 0
+            ? 'Suivi des articles'
+            : lowStock.length > 0
+              ? `${lowStock.length} article${lowStock.length > 1 ? 's' : ''} sous le seuil`
+              : `${articles.length} article${articles.length > 1 ? 's' : ''} suivi${articles.length > 1 ? 's' : ''}`}
+          tone={lowStock.length > 0 ? 'alert' : articles.length > 0 ? 'ok' : 'neutral'}
+          count={lowStock.length}
+          onPress={() => router.push('/inventory' as any)}
+        />
       </View>
 
       {/* Stats */}

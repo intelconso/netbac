@@ -4,6 +4,8 @@ import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, ChevronRight, MapPin, Layers, LayoutGrid, Plus, Clock, Search, FileText } from 'lucide-react-native';
 import { useActiveStore } from '../src/lib/useActive';
 import { cn, findDuplicateProduct } from '../src/lib/utils';
+import CreateBacModal from '../src/components/CreateBacModal';
+import { ContainerType } from '../src/types';
 import ZoneIcon from '../src/components/ZoneIcon';
 import UnitIcon from '../src/components/UnitIcon';
 import { addDays, startOfDay } from 'date-fns';
@@ -12,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function ExpressAddScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ zoneId?: string; unitId?: string; shelfId?: string }>();
-  const { zones, storageUnits, shelves, bacs, products } = useActiveStore();
+  const { zones, storageUnits, shelves, bacs, products, addBac } = useActiveStore();
 
   const initialSelection = { zoneId: params.zoneId, unitId: params.unitId, shelfId: params.shelfId };
   const initialStep: 'zone' | 'unit' | 'shelf' | 'bac' =
@@ -22,6 +24,8 @@ export default function ExpressAddScreen() {
   const [selection, setSelection] = useState<{ zoneId?: string; unitId?: string; shelfId?: string }>(initialSelection);
   const [searchQuery, setSearchQuery] = useState('');
   const [duplicateBac, setDuplicateBac] = useState<{ id: string; productId: string } | null>(null);
+  // Étagère sur laquelle on crée un contenant, ou null.
+  const [creatingBacOnShelf, setCreatingBacOnShelf] = useState<string | null>(null);
 
   const goBackStep = () => {
     if (step === 'bac') {
@@ -92,6 +96,17 @@ export default function ExpressAddScreen() {
       return;
     }
     router.push({ pathname: '/add-product', params: { bacId, zoneId: selection.zoneId || '', unitId: selection.unitId || '', shelfId: selection.shelfId || '' } });
+  };
+
+  // Créer un contenant enchaîne directement sur l'étiquette : c'est la suite
+  // logique du geste, on ne repose pas l'utilisateur devant la grille.
+  const handleCreateBac = (shelfId: string, name: string, type: ContainerType) => {
+    const bacId = addBac({ shelfId, name, type });
+    setCreatingBacOnShelf(null);
+    router.push({
+      pathname: '/add-product',
+      params: { bacId, zoneId: selection.zoneId || '', unitId: selection.unitId || '', shelfId },
+    });
   };
 
   const filteredBacs = bacs.filter((b) => b.shelfId === selection.shelfId);
@@ -276,26 +291,61 @@ export default function ExpressAddScreen() {
                   </View>
                 ))}
                 <View className="w-1/2 p-1.5">
-                  <Pressable onPress={() => router.push('/add-product')} className="bg-gray-50 p-6 rounded-3xl border border-dashed border-gray-200 items-center gap-2">
+                  <Pressable
+                    onPress={() => setCreatingBacOnShelf(selection.shelfId ?? null)}
+                    className="bg-white p-6 rounded-3xl border-2 border-dashed border-primary/40 items-center gap-2"
+                  >
+                    <Plus size={24} color="#10B981" />
+                    <Text className="text-[8px] font-black text-primary uppercase text-center">Nouveau contenant</Text>
+                  </Pressable>
+                </View>
+                <View className="w-1/2 p-1.5">
+                  {/* Aucun bac choisi, mais l'étagère l'est : on transmet le
+                      chemin parcouru aux étapes 1-3. Sans lui, le formulaire
+                      repartait de zéro et retombait sur le premier bac de
+                      l'application — un support d'une autre zone. */}
+                  <Pressable
+                    onPress={() => router.push({
+                      pathname: '/add-product',
+                      params: {
+                        zoneId: selection.zoneId || '',
+                        unitId: selection.unitId || '',
+                        shelfId: selection.shelfId || '',
+                      },
+                    })}
+                    className="bg-gray-50 p-6 rounded-3xl border border-dashed border-gray-200 items-center gap-2"
+                  >
                     <Plus size={24} color="#9CA3AF" />
-                    <Text className="text-[8px] font-black text-gray-400 uppercase text-center">Autre produit</Text>
+                    <Text className="text-[8px] font-black text-gray-400 uppercase text-center">Autre support</Text>
                   </Pressable>
                 </View>
               </View>
             ) : (
+              // Étagère vide : on crée le contenant sur place. Renvoyer vers
+              // les Paramètres faisait perdre les trois étapes parcourues.
               <View className="py-12 items-center gap-6">
                 <View className="w-20 h-20 rounded-full bg-gray-50 items-center justify-center">
                   <LayoutGrid size={40} color="#D1D5DB" />
                 </View>
                 <Text className="text-sm font-black text-gray-900 uppercase">Aucun support</Text>
-                <Pressable onPress={() => router.push('/settings')} className="px-8 py-4 bg-primary rounded-2xl">
-                  <Text className="text-white text-[10px] font-black uppercase tracking-widest">Configurer</Text>
+                <Pressable
+                  onPress={() => setCreatingBacOnShelf(selection.shelfId ?? null)}
+                  className="px-8 py-4 bg-primary rounded-2xl flex-row items-center gap-2"
+                >
+                  <Plus size={16} color="#fff" />
+                  <Text className="text-white text-[10px] font-black uppercase tracking-widest">Nouveau contenant</Text>
                 </Pressable>
               </View>
             )}
           </>
         )}
       </ScrollView>
+
+      <CreateBacModal
+        shelfId={creatingBacOnShelf}
+        onClose={() => setCreatingBacOnShelf(null)}
+        onSubmit={handleCreateBac}
+      />
 
       <Modal visible={!!duplicateBac} transparent animationType="fade" onRequestClose={() => setDuplicateBac(null)}>
         <View className="flex-1 bg-black/60 items-center justify-center p-6">

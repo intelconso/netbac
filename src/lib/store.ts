@@ -1,12 +1,37 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, Task, TaskCompletion } from '../types';
+import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, Task, TaskCompletion } from '../types';
 import { randomId } from './utils';
 import { deriveColdUnits } from './tempUnits';
 import { nextCheckFrom } from './pestControl';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
 import { taskCompletionId } from './tasks';
+import {
+  DEFAULT_ARTICLE_CATEGORIES,
+  convertQty,
+  createsStockIn,
+  deducedLocationOf,
+  findArticleByName,
+  findCategoryByName,
+  movementId,
+  normalizeArticleName,
+  roundQty,
+  stockByArticle,
+  unitsCompatible,
+} from './inventory';
+
+// Rangement d'un article dans la structure — voir Article dans types.ts.
+// Les quatre niveaux voyagent ensemble : choisir une étagère renseigne aussi
+// son enceinte et sa zone, choisir une zone efface les niveaux plus profonds.
+type ArticleLocation = Pick<Article, 'zoneId' | 'unitId' | 'shelfId' | 'bacId'>;
+
+const pickLocation = (l: Partial<ArticleLocation>): Partial<ArticleLocation> => ({
+  ...(l.zoneId ? { zoneId: l.zoneId } : {}),
+  ...(l.unitId ? { unitId: l.unitId } : {}),
+  ...(l.shelfId ? { shelfId: l.shelfId } : {}),
+  ...(l.bacId ? { bacId: l.bacId } : {}),
+});
 
 interface StoreActions {
   addZone: (zone: Omit<Zone, 'id' | 'modifiedAt'>) => void;
@@ -19,7 +44,7 @@ interface StoreActions {
   updateShelf: (id: string, shelf: Partial<Omit<Shelf, 'id' | 'modifiedAt'>>) => void;
   deleteShelf: (id: string) => void;
   setUnitShelves: (unitId: string, count: number) => void;
-  addBac: (bac: Omit<Bac, 'id' | 'createdAt' | 'modifiedAt' | 'syncStatus'>) => void;
+  addBac: (bac: Omit<Bac, 'id' | 'createdAt' | 'modifiedAt' | 'syncStatus'>) => string;
   updateBac: (id: string, bac: Partial<Omit<Bac, 'id' | 'createdAt' | 'modifiedAt' | 'syncStatus'>>) => void;
   deleteBac: (id: string) => void;
   addProduct: (product: Omit<Product, 'id' | 'addedAt' | 'modifiedAt' | 'syncStatus' | 'status'>) => string;
@@ -83,6 +108,18 @@ interface StoreActions {
   completeTask: (taskId: string, data: { employeeId?: string; operatorName: string; notes?: string }, options?: { dayKey?: number }) => void;
   uncompleteTask: (taskId: string, dayKey?: number) => void;
   setTaskReminderHour: (hour: number | undefined) => void;
+  addArticle: (data: { name: string; unit: string; minQty?: number; categoryId?: string } & ArticleLocation) => string;
+  updateArticle: (id: string, patch: Partial<Pick<Article, 'name' | 'unit' | 'minQty' | 'categoryId'> & ArticleLocation>) => { ok: boolean; error?: string };
+  deleteArticle: (id: string) => void;
+  addArticleCategory: (data: { name: string; color?: string }) => { ok: boolean; id?: string; error?: string };
+  updateArticleCategory: (id: string, patch: { name?: string; color?: string }) => { ok: boolean; error?: string };
+  deleteArticleCategory: (id: string) => void;
+  restoreDefaultArticleCategories: () => number;
+  importArticlesFromProducts: () => { created: number; linked: number };
+  autoAssignArticleLocations: (options?: { includeZoneOnly?: boolean }) => { placed: number; remaining: number };
+  addStockMovement: (data: { articleId: string; kind: StockMovementKind; qty: number; timestamp?: number; operatorName?: string; notes?: string }) => void;
+  setStockCount: (articleId: string, countedQty: number, data?: { operatorName?: string; notes?: string }) => void;
+  deleteStockMovement: (id: string) => { ok: boolean; error?: string };
   setUser: (user: User | null) => void;
   updateSettings: (settings: Partial<User['settings']>) => void;
   setOffline: (isOffline: boolean) => void;
@@ -121,6 +158,10 @@ const INITIAL_STATE: AppState = {
   taskCompletions: [],
   taskReminderHour: undefined,
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
+  articles: [],
+  stockMovements: [],
+  // Catégories proposées d'origine, ids fixes — voir DEFAULT_ARTICLE_CATEGORIES.
+  articleCategories: DEFAULT_ARTICLE_CATEGORIES.map((c) => ({ ...c, modifiedAt: 0 })),
   customActionTypes: [],
   defaultActionTypeStates: [],
   user: null,
@@ -140,6 +181,102 @@ const tomb = <T extends { modifiedAt: number; deletedAt?: number }>(item: T): T 
   modifiedAt: Date.now(),
   deletedAt: Date.now(),
 });
+
+// Aligne le registre de stock sur une étiquette.
+//
+// Un mouvement né d'une étiquette n'est JAMAIS écrit à la main depuis un écran :
+// il est dérivé de l'étiquette, ici. Cette fonction recalcule l'ensemble exact
+// des mouvements que l'étiquette doit produire dans son état actuel, puis aligne
+// le registre dessus — création, mise à jour, résurrection, mise en tombstone.
+//
+// Toutes les actions produit passent par elle (ajout, édition, changement de
+// statut, suppression), donc l'étiquette et le stock ne peuvent pas diverger :
+// corriger une quantité, changer d'article ou supprimer une étiquette corrige
+// le stock du même geste, sans que l'appelant ait à y penser.
+//
+// Les ids sont déterministes (voir movementId) : deux appareils hors ligne qui
+// marquent la même étiquette utilisée convergent sur UN mouvement au lieu de
+// sortir la quantité deux fois à la fusion.
+function reconcileProductMovements(
+  product: Product,
+  articles: Article[],
+  movements: StockMovement[]
+): StockMovement[] {
+  const now = Date.now();
+  const article = product.articleId
+    ? articles.find((a) => a.id === product.articleId && !a.deletedAt)
+    : undefined;
+
+  // Ce que l'étiquette doit produire dans son état actuel. Une étiquette sans
+  // article rattaché (les anciennes, et le texte libre) ne bouge aucun stock.
+  const wanted = new Map<string, { kind: StockMovementKind; timestamp?: number }>();
+  if (article && !product.deletedAt && product.quantity > 0) {
+    const add = (kind: StockMovementKind, timestamp?: number) =>
+      wanted.set(movementId(product.id, kind), { kind, timestamp });
+    if (createsStockIn(product.actionType)) add('in', product.addedAt);
+    if (product.status === 'used') add('out_used', product.usedAt);
+    if (product.status === 'discarded') add('out_waste');
+  }
+
+  const next = movements.map((m) => {
+    if (m.productId !== product.id) return m;
+    const want = wanted.get(m.id);
+    // Plus attendu : on pose une tombstone plutôt que de retirer la ligne, pour
+    // que la fusion propage le retrait aux autres appareils.
+    if (!want) return m.deletedAt ? m : { ...m, deletedAt: now, modifiedAt: now };
+    wanted.delete(m.id);
+    return {
+      ...m,
+      articleId: article!.id,
+      articleName: article!.name,
+      unit: product.unit,
+      qty: product.quantity,
+      // On garde l'horodatage d'origine : éditer une note sur une étiquette déjà
+      // utilisée ne doit pas déplacer la sortie dans le temps. Une date d'usage
+      // rétroactive, elle, prime — c'est justement ce qu'elle veut dire.
+      timestamp: want.timestamp ?? m.timestamp,
+      deletedAt: undefined,
+      modifiedAt: now,
+    };
+  });
+
+  for (const [id, want] of wanted) {
+    next.push({
+      id,
+      articleId: article!.id,
+      articleName: article!.name,
+      unit: product.unit,
+      kind: want.kind,
+      qty: product.quantity,
+      timestamp: want.timestamp ?? now,
+      productId: product.id,
+      modifiedAt: now,
+    });
+  }
+  return next;
+}
+
+// Supprimer un emplacement supprime les étiquettes qu'il contient — et donc
+// leur stock. Sans le reconcile, l'entrée d'une étiquette active resterait au
+// registre alors que l'étiquette n'existe plus : l'article garderait une
+// quantité fantôme que rien à l'écran ne permettrait plus de corriger.
+//
+// Les étiquettes déjà supprimées sont laissées telles quelles : les
+// retombstoner ne changerait rien au stock mais réécrirait leur `modifiedAt`,
+// donc les ferait ressortir à chaque fusion.
+function tombProductsWhere(
+  state: { products: Product[]; articles: Article[]; stockMovements: StockMovement[] },
+  doomed: (product: Product) => boolean
+): { products: Product[]; stockMovements: StockMovement[] } {
+  let stockMovements = state.stockMovements;
+  const products = state.products.map((p) => {
+    if (p.deletedAt || !doomed(p)) return p;
+    const touched = tomb(p);
+    stockMovements = reconcileProductMovements(touched, state.articles, stockMovements);
+    return touched;
+  });
+  return { products, stockMovements };
+}
 
 export const useStore = create<AppState & StoreActions>()(
   persist(
@@ -163,7 +300,7 @@ export const useStore = create<AppState & StoreActions>()(
           storageUnits: state.storageUnits.map((u) => (childUnitIds.includes(u.id) ? tomb(u) : u)),
           shelves: state.shelves.map((s) => (childShelfIds.includes(s.id) ? tomb(s) : s)),
           bacs: state.bacs.map((b) => (childBacIds.includes(b.id) ? tomb(b) : b)),
-          products: state.products.map((p) => (childBacIds.includes(p.bacId) ? tomb(p) : p)),
+          ...tombProductsWhere(state, (p) => childBacIds.includes(p.bacId)),
         };
       }),
 
@@ -182,7 +319,7 @@ export const useStore = create<AppState & StoreActions>()(
           storageUnits: state.storageUnits.map((u) => (u.id === id ? tomb(u) : u)),
           shelves: state.shelves.map((s) => (childShelfIds.includes(s.id) ? tomb(s) : s)),
           bacs: state.bacs.map((b) => (childBacIds.includes(b.id) ? tomb(b) : b)),
-          products: state.products.map((p) => (childBacIds.includes(p.bacId) ? tomb(p) : p)),
+          ...tombProductsWhere(state, (p) => childBacIds.includes(p.bacId)),
         };
       }),
 
@@ -199,7 +336,7 @@ export const useStore = create<AppState & StoreActions>()(
         return {
           shelves: state.shelves.map((s) => (s.id === id ? tomb(s) : s)),
           bacs: state.bacs.map((b) => (childBacIds.includes(b.id) ? tomb(b) : b)),
-          products: state.products.map((p) => (childBacIds.includes(p.bacId) ? tomb(p) : p)),
+          ...tombProductsWhere(state, (p) => childBacIds.includes(p.bacId)),
         };
       }),
 
@@ -221,19 +358,25 @@ export const useStore = create<AppState & StoreActions>()(
         return {
           shelves: [...others, ...next, ...tombs, ...removed.map(tomb)].sort((a, b) => a.level - b.level),
           bacs: state.bacs.map((b) => (removedBacIds.has(b.id) ? tomb(b) : b)),
-          products: state.products.map((p) => (removedBacIds.has(p.bacId) ? tomb(p) : p)),
+          ...tombProductsWhere(state, (p) => removedBacIds.has(p.bacId)),
         };
       }),
 
-      addBac: (bac) => set((state) => ({
-        bacs: [...state.bacs, {
-          ...bac,
-          id: randomId(),
-          createdAt: Date.now(),
-          modifiedAt: Date.now(),
-          syncStatus: state.isOffline ? 'offline' : 'pending',
-        }],
-      })),
+      // Rend l'id : créer un contenant depuis le formulaire d'étiquette doit
+      // pouvoir le sélectionner dans la foulée, sans le rechercher par nom.
+      addBac: (bac) => {
+        const id = randomId();
+        set((state) => ({
+          bacs: [...state.bacs, {
+            ...bac,
+            id,
+            createdAt: Date.now(),
+            modifiedAt: Date.now(),
+            syncStatus: state.isOffline ? 'offline' : 'pending',
+          }],
+        }));
+        return id;
+      },
 
       updateBac: (id, bac) => set((state) => ({
         bacs: state.bacs.map((b) => (b.id === id ? { ...b, ...bac, modifiedAt: Date.now() } : b)),
@@ -241,52 +384,85 @@ export const useStore = create<AppState & StoreActions>()(
 
       deleteBac: (id) => set((state) => ({
         bacs: state.bacs.map((b) => (b.id === id ? tomb(b) : b)),
-        products: state.products.map((p) => (p.bacId === id ? tomb(p) : p)),
+        ...tombProductsWhere(state, (p) => p.bacId === id),
       })),
 
+      // Les trois mutations d'étiquette ci-dessous rejouent
+      // reconcileProductMovements sur l'étiquette touchée : c'est ce qui fait
+      // que le stock suit les étiquettes sans qu'aucun écran n'ait à le savoir.
+      // Marquer utilisé depuis la liste, depuis un bac ou depuis le jeté en
+      // masse des alertes passe par updateProductStatus — donc par ici.
       addProduct: (product) => {
         const id = randomId();
-        set((state) => ({
-          products: [...state.products, {
+        set((state) => {
+          const created: Product = {
             ...product,
             id,
             addedAt: Date.now(),
             modifiedAt: Date.now(),
             status: 'active',
             syncStatus: state.isOffline ? 'offline' : 'pending',
-          }],
-        }));
+          };
+          return {
+            products: [...state.products, created],
+            stockMovements: reconcileProductMovements(created, state.articles, state.stockMovements),
+          };
+        });
         return id;
       },
 
       updateProductStatus: (id, status, options) => {
         const usedAt = options?.usedAt;
-        set((state) => ({
-          products: state.products.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  status,
-                  ...(usedAt !== undefined ? { usedAt } : {}),
-                  modifiedAt: Date.now(),
-                  syncStatus: state.isOffline ? 'offline' : 'pending',
-                }
-              : p
-          ),
-        }));
+        set((state) => {
+          let touched: Product | undefined;
+          const products = state.products.map((p) => {
+            if (p.id !== id) return p;
+            touched = {
+              ...p,
+              status,
+              ...(usedAt !== undefined ? { usedAt } : {}),
+              modifiedAt: Date.now(),
+              syncStatus: state.isOffline ? 'offline' : 'pending',
+            };
+            return touched;
+          });
+          if (!touched) return { products };
+          return {
+            products,
+            stockMovements: reconcileProductMovements(touched, state.articles, state.stockMovements),
+          };
+        });
       },
 
       updateProduct: (id, productData) => {
-        set((state) => ({
-          products: state.products.map((p) =>
-            p.id === id ? { ...p, ...productData, modifiedAt: Date.now(), syncStatus: state.isOffline ? 'offline' : 'pending' } : p
-          ),
-        }));
+        set((state) => {
+          let touched: Product | undefined;
+          const products = state.products.map((p) => {
+            if (p.id !== id) return p;
+            touched = { ...p, ...productData, modifiedAt: Date.now(), syncStatus: state.isOffline ? 'offline' : 'pending' };
+            return touched;
+          });
+          if (!touched) return { products };
+          return {
+            products,
+            stockMovements: reconcileProductMovements(touched, state.articles, state.stockMovements),
+          };
+        });
       },
 
-      deleteProduct: (id) => set((state) => ({
-        products: state.products.map((p) => (p.id === id ? tomb(p) : p)),
-      })),
+      deleteProduct: (id) => set((state) => {
+        let touched: Product | undefined;
+        const products = state.products.map((p) => {
+          if (p.id !== id) return p;
+          touched = tomb(p);
+          return touched;
+        });
+        if (!touched) return { products };
+        return {
+          products,
+          stockMovements: reconcileProductMovements(touched, state.articles, state.stockMovements),
+        };
+      }),
 
       addProductUnit: (name) => set((state) => {
         const trimmed = name.trim();
@@ -729,6 +905,343 @@ export const useStore = create<AppState & StoreActions>()(
 
       setTaskReminderHour: (hour) => set({ taskReminderHour: hour }),
 
+      // --- Inventaire ------------------------------------------------------
+      //
+      // Le catalogue d'articles est la liste d'ingrédients au niveau où on les
+      // étiquette. Le stock n'est jamais stocké dessus : il se lit en sommant
+      // le registre (voir inventory.ts, qui explique pourquoi).
+
+      // Création idempotente : rappeler avec un nom déjà pris rend l'article
+      // existant au lieu d'en créer un double. C'est ce qui permet à la création
+      // en ligne depuis l'écran d'étiquette d'être un simple tap sans risque.
+      addArticle: ({ name, unit, minQty, categoryId, ...location }) => {
+        const existing = findArticleByName(get().articles, name);
+        if (existing) return existing.id;
+        const id = randomId();
+        const now = Date.now();
+        set((state) => ({
+          articles: [
+            ...state.articles,
+            {
+              id,
+              name: name.trim(),
+              unit,
+              ...(categoryId ? { categoryId } : {}),
+              ...pickLocation(location),
+              ...(minQty !== undefined ? { minQty } : {}),
+              modifiedAt: now,
+            } as Article,
+          ],
+        }));
+        return id;
+      },
+
+      // Le changement d'unité est le seul refus possible ici : passer de kg à
+      // "pce" alors que le registre contient des kilos rendrait tout
+      // l'historique de cet article illisible (rien ne convertit des pièces en
+      // kilos). Dans la même famille (kg ↔ g), c'est libre : la somme reconvertit
+      // chaque mouvement depuis l'unité qu'il a snapshottée.
+      updateArticle: (id, patch) => {
+        const state = get();
+        const article = state.articles.find((a) => a.id === id);
+        if (!article) return { ok: false, error: 'Article introuvable.' };
+
+        if (patch.unit && !unitsCompatible(patch.unit, article.unit)) {
+          const hasHistory = state.stockMovements.some((m) => m.articleId === id && !m.deletedAt);
+          if (hasHistory) {
+            return {
+              ok: false,
+              error: `Des mouvements de stock sont déjà enregistrés en ${article.unit} — impossible de passer en ${patch.unit}. Crée un nouvel article.`,
+            };
+          }
+        }
+
+        if (patch.name !== undefined) {
+          const clash = findArticleByName(state.articles, patch.name);
+          if (clash && clash.id !== id) {
+            return { ok: false, error: `Un article "${clash.name}" existe déjà.` };
+          }
+        }
+
+        const now = Date.now();
+        // Le rangement est remplacé en bloc : passer d'une étagère à une zone
+        // doit effacer l'étagère, pas la laisser traîner sous la nouvelle zone.
+        const touchesLocation =
+          'zoneId' in patch || 'unitId' in patch || 'shelfId' in patch || 'bacId' in patch;
+        set((st) => ({
+          articles: st.articles.map((a) => {
+            if (a.id !== id) return a;
+            const { zoneId, unitId, shelfId, bacId, ...withoutLocation } = a;
+            const { zoneId: _z, unitId: _u, shelfId: _s, bacId: _b, ...fields } = patch;
+            const location = touchesLocation
+              ? pickLocation(patch)
+              : pickLocation({ zoneId, unitId, shelfId, bacId });
+            return {
+              ...withoutLocation,
+              ...fields,
+              ...location,
+              ...(patch.name ? { name: patch.name.trim() } : {}),
+              modifiedAt: now,
+            } as Article;
+          }),
+        }));
+        return { ok: true };
+      },
+
+      // Tombstone seulement. Les mouvements de l'article restent en base — on ne
+      // perd jamais l'historique de ce qui est entré et sorti — ils cessent
+      // simplement d'être comptés, l'article n'étant plus dans la liste vivante.
+      deleteArticle: (id) => set((state) => ({
+        articles: state.articles.map((a) => (a.id === id ? tomb(a) : a)),
+      })),
+
+      addArticleCategory: ({ name, color }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { ok: false, error: 'Le nom est vide.' };
+        const clash = findCategoryByName(get().articleCategories ?? [], trimmed);
+        if (clash) return { ok: false, error: `Une catégorie "${clash.name}" existe déjà.` };
+        const id = randomId();
+        const now = Date.now();
+        set((state) => ({
+          articleCategories: [
+            ...(state.articleCategories ?? []),
+            { id, name: trimmed, ...(color ? { color } : {}), modifiedAt: now },
+          ],
+        }));
+        return { ok: true, id };
+      },
+
+      updateArticleCategory: (id, patch) => {
+        const list = get().articleCategories ?? [];
+        if (!list.some((c) => c.id === id && !c.deletedAt)) {
+          return { ok: false, error: 'Catégorie introuvable.' };
+        }
+        if (patch.name !== undefined) {
+          const trimmed = patch.name.trim();
+          if (!trimmed) return { ok: false, error: 'Le nom est vide.' };
+          const clash = findCategoryByName(list, trimmed);
+          if (clash && clash.id !== id) {
+            return { ok: false, error: `Une catégorie "${clash.name}" existe déjà.` };
+          }
+        }
+        const now = Date.now();
+        set((state) => ({
+          articleCategories: (state.articleCategories ?? []).map((c) =>
+            c.id === id
+              ? {
+                  ...c,
+                  ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+                  ...(patch.color !== undefined ? { color: patch.color } : {}),
+                  modifiedAt: now,
+                }
+              : c
+          ),
+        }));
+        return { ok: true };
+      },
+
+      // Tombstone. Les articles qui la portaient ne sont PAS modifiés : ils
+      // retombent d'eux-mêmes dans « Sans catégorie » à l'affichage (voir
+      // articleCategoryGroups), donc restaurer la catégorie les y ramène tous
+      // sans qu'on ait eu à réécrire chaque article.
+      deleteArticleCategory: (id) => set((state) => ({
+        articleCategories: (state.articleCategories ?? []).map((c) => (c.id === id ? tomb(c) : c)),
+      })),
+
+      // Remet les catégories d'origine qui ont été supprimées. Ressuscite le
+      // tombstone existant au lieu d'en créer un double — les ids sont fixes.
+      restoreDefaultArticleCategories: () => {
+        const list = get().articleCategories ?? [];
+        const missing = DEFAULT_ARTICLE_CATEGORIES.filter((d) => {
+          const existing = list.find((c) => c.id === d.id);
+          return !existing || existing.deletedAt;
+        });
+        if (!missing.length) return 0;
+        const now = Date.now();
+        set((state) => {
+          const current = state.articleCategories ?? [];
+          const restored = current.map((c) => {
+            const d = missing.find((m) => m.id === c.id);
+            return d ? { ...c, name: d.name, color: d.color, deletedAt: undefined, modifiedAt: now } : c;
+          });
+          const added = missing
+            .filter((d) => !current.some((c) => c.id === d.id))
+            .map((d) => ({ ...d, modifiedAt: now }) as ArticleCategory);
+          return { articleCategories: [...restored, ...added] };
+        });
+        return missing.length;
+      },
+
+      // Amorçage du catalogue depuis les étiquettes déjà saisies : un article
+      // par nom distinct, dans l'unité la plus utilisée pour ce nom.
+      //
+      // Ne rattache que les étiquettes ACTIVES, volontairement. Rattacher les
+      // étiquettes déjà utilisées ou jetées fabriquerait des sorties datées
+      // d'avant l'existence de l'inventaire, sans les entrées correspondantes :
+      // le stock partirait profondément négatif. Un inventaire démarre sur ce
+      // qui est là aujourd'hui — le reste appartient à l'historique.
+      importArticlesFromProducts: () => {
+        const state = get();
+        const active = state.products.filter((p) => !p.deletedAt && p.status === 'active' && p.name.trim());
+
+        // Unité dominante par nom : si 8 étiquettes "Poulet" sont en kg et 1 en
+        // g, l'article naît en kg.
+        const byName = new Map<string, { name: string; units: Map<string, number> }>();
+        for (const p of active) {
+          const key = normalizeArticleName(p.name);
+          if (!key) continue;
+          const entry = byName.get(key) ?? { name: p.name.trim(), units: new Map<string, number>() };
+          entry.units.set(p.unit, (entry.units.get(p.unit) ?? 0) + 1);
+          byName.set(key, entry);
+        }
+
+        const now = Date.now();
+        const articles = [...state.articles];
+        let created = 0;
+        for (const [, entry] of byName) {
+          if (findArticleByName(articles, entry.name)) continue;
+          const unit = [...entry.units.entries()].sort((a, b) => b[1] - a[1])[0][0];
+          articles.push({ id: randomId(), name: entry.name, unit, modifiedAt: now });
+          created += 1;
+        }
+
+        let linked = 0;
+        let movements = state.stockMovements;
+        const products: Product[] = state.products.map((p) => {
+          if (p.deletedAt || p.status !== 'active' || p.articleId) return p;
+          const article = findArticleByName(articles, p.name);
+          if (!article) return p;
+          linked += 1;
+          const syncStatus: Product['syncStatus'] = state.isOffline ? 'offline' : 'pending';
+          return { ...p, articleId: article.id, modifiedAt: now, syncStatus };
+        });
+        // Le registre est aligné après coup, une étiquette à la fois : chaque
+        // étiquette fraîchement rattachée entre en stock avec sa quantité.
+        for (const p of products) {
+          if (p.articleId && !p.deletedAt && p.status === 'active') {
+            movements = reconcileProductMovements(p, articles, movements);
+          }
+        }
+
+        set({ articles, products, stockMovements: movements });
+        return { created, linked };
+      },
+
+      // Range d'un tap les articles qui n'ont pas encore d'emplacement, d'après
+      // l'endroit où leurs étiquettes actives sont posées — aussi profond que
+      // ces étiquettes sont d'accord (voir deducedLocationOf). Rattrapage pour
+      // les catalogues amorcés avant que l'emplacement n'existe.
+      //
+      // N'écrase JAMAIS un emplacement déjà choisi, et laisse tel quel l'article
+      // qu'aucune étiquette ne localise — mieux vaut le laisser à ranger que le
+      // poser au hasard.
+      //
+      // `includeZoneOnly` élargit la cible aux articles rangés à la zone SEULE,
+      // pour rattraper ceux placés par la première version qui ne descendait
+      // jamais plus bas. Réservé au rattrapage unique du démarrage : sur le
+      // bouton, ça reviendrait à défaire un choix délibéré de l'utilisateur.
+      autoAssignArticleLocations: (options) => {
+        const state = get();
+        const structure = {
+          bacs: state.bacs.filter((b) => !b.deletedAt),
+          shelves: state.shelves.filter((s) => !s.deletedAt),
+          storageUnits: state.storageUnits.filter((u) => !u.deletedAt),
+        };
+        const now = Date.now();
+        let placed = 0;
+        let remaining = 0;
+        const targeted = (a: Article) =>
+          options?.includeZoneOnly
+            ? a.unitId === undefined && a.shelfId === undefined && a.bacId === undefined
+            : a.zoneId === undefined;
+        const articles = state.articles.map((a) => {
+          if (a.deletedAt || !targeted(a)) return a;
+          const location = deducedLocationOf(a.id, state.products, structure);
+          // Rien de plus précis que ce qu'il a déjà : on le laisse tranquille
+          // plutôt que de le réécrire pour rien.
+          if (!location || (a.zoneId === location.zoneId && !location.unitId)) {
+            remaining += 1;
+            return a;
+          }
+          placed += 1;
+          return { ...a, ...pickLocation(location), modifiedAt: now };
+        });
+        if (placed) set({ articles });
+        return { placed, remaining };
+      },
+
+      // Saisie manuelle : livraison entrée à la main, sortie qui ne passe pas par
+      // une étiquette (casse, transfert…). Id aléatoire — contrairement aux
+      // mouvements d'étiquette, deux saisies manuelles identiques sont deux
+      // événements réels distincts et doivent toutes les deux compter.
+      addStockMovement: ({ articleId, kind, qty, timestamp, operatorName, notes }) => set((state) => {
+        const article = state.articles.find((a) => a.id === articleId && !a.deletedAt);
+        if (!article || !qty) return {};
+        const now = Date.now();
+        return {
+          stockMovements: [
+            ...state.stockMovements,
+            {
+              id: randomId(),
+              articleId,
+              articleName: article.name,
+              unit: article.unit,
+              kind,
+              qty: kind === 'adjust' ? qty : Math.abs(qty),
+              timestamp: timestamp ?? now,
+              ...(operatorName ? { operatorName } : {}),
+              ...(notes ? { notes } : {}),
+              modifiedAt: now,
+            } as StockMovement,
+          ],
+        };
+      }),
+
+      // Modification manuelle de la quantité : l'utilisateur pose le chiffre juste,
+      // et c'est l'ÉCART qui part au registre — jamais une réécriture du stock.
+      // C'est ce qui garde le reste intact : les entrées et sorties d'étiquettes
+      // continuent de compter par-dessus, et l'historique dit qui a modifié quoi.
+      //
+      // Un écart nul est enregistré aussi : il prouve que quelqu'un a vérifié.
+      setStockCount: (articleId, countedQty, data) => set((state) => {
+        const article = state.articles.find((a) => a.id === articleId && !a.deletedAt);
+        if (!article) return {};
+        const onHand = stockByArticle(state.articles, state.stockMovements).get(articleId) ?? 0;
+        const now = Date.now();
+        return {
+          stockMovements: [
+            ...state.stockMovements,
+            {
+              id: randomId(),
+              articleId,
+              articleName: article.name,
+              unit: article.unit,
+              kind: 'adjust',
+              qty: roundQty(countedQty - onHand),
+              timestamp: now,
+              ...(data?.operatorName ? { operatorName: data.operatorName } : {}),
+              ...(data?.notes ? { notes: data.notes } : {}),
+              modifiedAt: now,
+            } as StockMovement,
+          ],
+        };
+      }),
+
+      // Seules les saisies manuelles se suppriment. Un mouvement né d'une
+      // étiquette serait recréé au prochain reconcile : c'est l'étiquette qu'il
+      // faut corriger, et le message le dit plutôt que d'échouer en silence.
+      deleteStockMovement: (id) => {
+        const movement = get().stockMovements.find((m) => m.id === id);
+        if (!movement) return { ok: false, error: 'Mouvement introuvable.' };
+        if (movement.productId) {
+          return { ok: false, error: "Ce mouvement vient d'une étiquette — modifie ou supprime l'étiquette." };
+        }
+        set((state) => ({
+          stockMovements: state.stockMovements.map((m) => (m.id === id ? tomb(m) : m)),
+        }));
+        return { ok: true };
+      },
+
       setUser: (user) => set({ user }),
 
       updateSettings: (newSettings) => set((state) => ({
@@ -834,6 +1347,18 @@ export const useStore = create<AppState & StoreActions>()(
             // Per-date exceptions are real records (id + modifiedAt + tombstone) → newer-wins merge.
             dayOverrides: mergeNewer(state.dayOverrides ?? [], cloud.dayOverrides),
             productUnits: Array.from(new Set([...(state.productUnits ?? []), ...((cloud.productUnits as string[]) ?? [])])),
+            // Inventaire. `?? []` : les docs cloud d'avant la fonctionnalité
+            // n'ont pas ces clés — rien à migrer, elles arrivent vides. Le
+            // registre fusionne en newer-wins comme le reste : les mouvements
+            // nés d'une étiquette ont un id déterministe, donc deux appareils
+            // qui ont sorti la même étiquette convergent sur une seule ligne.
+            articles: mergeNewer(state.articles ?? [], cloud.articles),
+            stockMovements: mergeNewer(state.stockMovements ?? [], cloud.stockMovements),
+            // Les catégories d'origine ont un id fixe et `modifiedAt: 0`, donc la
+            // graine locale perd contre toute vraie modification venue du cloud
+            // — y compris une suppression. Une catégorie supprimée sur un appareil
+            // ne peut pas ressusciter depuis la graine d'un autre.
+            articleCategories: mergeNewer(state.articleCategories ?? [], cloud.articleCategories),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
             user: state.user ?? cloud.user ?? null,
@@ -874,6 +1399,9 @@ export const useStore = create<AppState & StoreActions>()(
         taskCompletions: state.taskCompletions,
         taskReminderHour: state.taskReminderHour,
         productUnits: state.productUnits,
+        articles: state.articles,
+        stockMovements: state.stockMovements,
+        articleCategories: state.articleCategories,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
         user: state.user,

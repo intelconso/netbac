@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, Bug, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer, Users, ListChecks } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, Bug, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer, Users, ListChecks, Package, Layers } from 'lucide-react-native';
 import { format, startOfMonth, endOfMonth, getDay, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { signOut } from '../../src/lib/firebase';
@@ -21,6 +21,8 @@ import SyncRow from '../../src/components/SyncRow';
 import FabricationTypesManager from '../../src/components/FabricationTypesManager';
 import EmployeesManager from '../../src/components/EmployeesManager';
 import TasksManager from '../../src/components/TasksManager';
+import ArticlesManager from '../../src/components/ArticlesManager';
+import CategoriesManager from '../../src/components/CategoriesManager';
 import { WEEKDAYS, STATUS_LABELS, startOfDayMs } from '../../src/lib/serviceDays';
 import { DayServiceStatus } from '../../src/types';
 import { resolveTempUnits } from '../../src/lib/tempUnits';
@@ -68,7 +70,7 @@ export default function SettingsScreen() {
   const moveTempUnit = useStore((s) => s.moveTempUnit);
   const tempUnits = resolveTempUnits({ tempUnits: tempUnitsRaw, storageUnits });
 
-  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl' | 'employees' | 'tasks'>('menu');
+  const [section, setSection] = useState<'menu' | 'structure' | 'custom' | 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl' | 'employees' | 'tasks' | 'articles' | 'articleCategories'>('menu');
   const [drillDown, setDrillDown] = useState<{ zoneId?: string; unitId?: string }>({});
   const [newUnit, setNewUnit] = useState('');
   const [newCleaningArea, setNewCleaningArea] = useState('');
@@ -98,7 +100,8 @@ export default function SettingsScreen() {
           setDrillDown({});
           return true;
         }
-        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays' || section === 'pestControl' || section === 'employees' || section === 'tasks') {
+        if (section === 'units' || section === 'actionTypes' || section === 'fabricationTypes' || section === 'cleaningAreas' || section === 'tempUnits' || section === 'closedDays' || section === 'pestControl' || section === 'employees' || section === 'tasks' ||
+            section === 'articleCategories') {
           setSection('custom');
           return true;
         }
@@ -162,16 +165,18 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'articles' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
-    { id: 'custom', label: 'Personnalisation', description: "Unités, types d'action, types de fabrication", icon: Tag },
+    { id: 'articles', label: 'Gestion de stock', description: "Catalogue d'ingrédients suivis en stock", icon: Package },
+    { id: 'custom', label: 'Personnalisation', description: "Unités, catégories, types d'action", icon: Tag },
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
 
-  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl' | 'employees' | 'tasks'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const customItems: { id: 'units' | 'actionTypes' | 'fabricationTypes' | 'cleaningAreas' | 'tempUnits' | 'closedDays' | 'pestControl' | 'employees' | 'tasks' | 'articleCategories'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'tasks', label: 'Tâches', description: "Checklist de l'équipe & rappel quotidien", icon: ListChecks },
     { id: 'employees', label: 'Équipe', description: 'Qui peut cocher les tâches', icon: Users },
     { id: 'units', label: 'Unités', description: 'Unités de mesure pour les produits', icon: Scale },
+    { id: 'articleCategories', label: 'Catégories', description: "Classement des articles de l'inventaire", icon: Layers },
     { id: 'actionTypes', label: "Types d'action", description: 'Activer/désactiver les défauts, ajouter les vôtres', icon: Tag },
     { id: 'fabricationTypes', label: 'Types de fabrication', description: 'Champs des formulaires de fabrication', icon: ChefHat },
     { id: 'cleaningAreas', label: 'Zones de nettoyage', description: 'Zones du contrôle nettoyage quotidien', icon: Sparkles },
@@ -795,23 +800,36 @@ export default function SettingsScreen() {
     );
   }
 
-  if (section === 'tasks' || section === 'employees') {
-    const isTasks = section === 'tasks';
+  if (section === 'tasks' || section === 'employees' || section === 'articles' || section === 'articleCategories') {
+    const managers = {
+      tasks: { title: 'Tâches', subtitle: "Checklist de l'équipe", node: <TasksManager /> },
+      employees: { title: 'Équipe', subtitle: 'Membres du restaurant', node: <EmployeesManager /> },
+      articles: { title: 'Gestion de stock', subtitle: 'Catalogue des articles suivis', node: <ArticlesManager /> },
+      articleCategories: {
+        title: 'Catégories',
+        subtitle: "Classement du catalogue d'inventaire",
+        node: <CategoriesManager alwaysOpen />,
+      },
+    } as const;
+    const manager = managers[section];
+    // Articles est une entrée de premier niveau des Paramètres, Tâches et
+    // Équipe vivent sous Personnalisation : le retour suit d'où on vient.
+    const parent = section === 'articles' ? 'menu' : 'custom';
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 bg-background">
         <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
           <View className="mb-6 flex-row items-center gap-3">
-            <Pressable onPress={() => setSection('custom')} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
+            <Pressable onPress={() => setSection(parent)} className="w-10 h-10 rounded-xl bg-gray-50 items-center justify-center">
               <ChevronRight size={20} color="#9CA3AF" style={{ transform: [{ rotate: '180deg' }] }} />
             </Pressable>
             <View>
-              <Text className="text-sm font-black text-gray-900 uppercase">{isTasks ? 'Tâches' : 'Équipe'}</Text>
+              <Text className="text-sm font-black text-gray-900 uppercase">{manager.title}</Text>
               <Text className="text-[9px] font-bold text-primary uppercase tracking-widest mt-0.5">
-                {isTasks ? "Checklist de l'équipe" : 'Membres du restaurant'}
+                {manager.subtitle}
               </Text>
             </View>
           </View>
-          {isTasks ? <TasksManager /> : <EmployeesManager />}
+          {manager.node}
         </ScrollView>
       </KeyboardAvoidingView>
     );
