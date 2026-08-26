@@ -16,7 +16,7 @@ import { fr } from 'date-fns/locale';
 // colorée (blanc sur fond), une tuile au repos est blanche et bordée — donc
 // une carte qui passe de "à faire" à "fait" change de tonalité sans changer
 // de place ni de taille : la grille ne bouge jamais.
-type Tone = 'primary' | 'alert' | 'danger' | 'ok' | 'blue' | 'neutral';
+type Tone = 'primary' | 'alert' | 'danger' | 'ok' | 'blue' | 'neutral' | 'task' | 'taskOk';
 
 const TONES: Record<Tone, {
   bg: string; bordered?: boolean; title: string; sub: string; iconBg: string; icon: string; count: string;
@@ -27,6 +27,11 @@ const TONES: Record<Tone, {
   ok:      { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#10B981', iconBg: 'rgba(16,185,129,0.1)', icon: '#10B981', count: '#E5E7EB' },
   blue:    { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#9CA3AF', iconBg: '#EFF6FF', icon: '#3B82F6', count: '#E5E7EB' },
   neutral: { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#9CA3AF', iconBg: '#F3F4F6', icon: '#9CA3AF', count: '#E5E7EB' },
+  // Tâches — violet, pour ne jamais être confondue avec l'ambre de Traçabilité :
+  // deux tuiles voisines qui appellent toutes les deux à l'action doivent se
+  // distinguer au coup d'œil, pas seulement par leur libellé.
+  task:    { bg: '#8B5CF6', title: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', iconBg: 'rgba(255,255,255,0.2)', icon: '#FFFFFF', count: 'rgba(255,255,255,0.35)' },
+  taskOk:  { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#8B5CF6', iconBg: 'rgba(139,92,246,0.1)', icon: '#8B5CF6', count: '#E5E7EB' },
 };
 
 interface TileProps {
@@ -232,7 +237,7 @@ export default function HomeScreen() {
             subtitle={pendingTasks > 0
               ? `${pendingTasks} tâche${pendingTasks > 1 ? 's' : ''} à faire`
               : hasTasks ? 'Tout est fait' : "Checklist de l'équipe"}
-            tone={pendingTasks > 0 ? 'alert' : hasTasks ? 'ok' : 'neutral'}
+            tone={pendingTasks > 0 ? 'task' : hasTasks ? 'taskOk' : 'neutral'}
             count={pendingTasks}
             onPress={() => router.push('/tasks' as any)}
           />
