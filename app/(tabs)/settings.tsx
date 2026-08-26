@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, BackHandler, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, Bug, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer, Users, ListChecks, Package, Layers } from 'lucide-react-native';
+import { Plus, Trash2, ChevronRight, ChevronLeft, ChevronUp, ChevronDown, X, Boxes, Bug, LogOut, Scale, Check, ChefHat, Edit2, FileText, Sparkles, Tag, CalendarOff, CalendarDays, Thermometer, Users, ListChecks, Package, Layers, ShoppingCart } from 'lucide-react-native';
 import { format, startOfMonth, endOfMonth, getDay, addMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { signOut } from '../../src/lib/firebase';
@@ -165,10 +165,11 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const menuItems: { id: 'structure' | 'articles' | 'tasks' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
+  const menuItems: { id: 'structure' | 'articles' | 'tasks' | 'shopping' | 'custom' | 'reports'; label: string; description: string; icon: React.ComponentType<{ size?: number; color?: string }> }[] = [
     { id: 'structure', label: 'Structure', description: 'Zones, unités, niveaux, contenants', icon: Boxes },
     { id: 'tasks', label: 'Tâches', description: "Checklist de l'équipe & rappel quotidien", icon: ListChecks },
     { id: 'articles', label: 'Gestion de stock', description: "Catalogue d'ingrédients suivis en stock", icon: Package },
+    { id: 'shopping', label: 'Courses', description: 'Fournisseurs & produits à commander', icon: ShoppingCart },
     { id: 'custom', label: 'Personnalisation', description: "Unités, catégories, types d'action", icon: Tag },
     { id: 'reports', label: 'Rapports', description: 'Générer un rapport HACCP en PDF', icon: FileText },
   ];
@@ -201,6 +202,7 @@ export default function SettingsScreen() {
                 key={item.id}
                 onPress={() => {
                   if (item.id === 'reports') router.push('/reports' as any);
+                  else if (item.id === 'shopping') router.push('/courses-catalog' as any);
                   else setSection(item.id);
                 }}
                 className="bg-white p-4 rounded-2xl border border-gray-100 flex-row items-center gap-4"

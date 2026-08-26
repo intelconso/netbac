@@ -1,13 +1,14 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks, Boxes } from 'lucide-react-native';
+import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks, Boxes, ShoppingCart } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
 import { resolveTempUnits } from '../../src/lib/tempUnits';
 import { dayStatus, startOfDayMs } from '../../src/lib/serviceDays';
 import { pendingTaskCount } from '../../src/lib/tasks';
 import { lowStockArticles } from '../../src/lib/inventory';
+import { requestedCount } from '../../src/lib/shopping';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -102,6 +103,7 @@ export default function HomeScreen() {
     products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas,
     storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides,
     tasks, taskCompletions, articles, stockMovements,
+    suppliers, shoppingItems, shoppingEntries,
   } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
@@ -156,6 +158,13 @@ export default function HomeScreen() {
   // Articles dont le stock a atteint le seuil réglé — le compte de la tuile
   // Stock. Sans seuil réglé, un article n'alerte jamais (voir inventory.ts).
   const lowStock = useMemo(() => lowStockArticles(articles, stockMovements), [articles, stockMovements]);
+
+  // Produits à acheter — le compteur de la tuile Courses. Aucun rapport avec
+  // le stock ci-dessus : la liste de courses est un univers séparé (shopping.ts).
+  const toBuy = useMemo(
+    () => requestedCount({ suppliers, shoppingItems, shoppingEntries }),
+    [suppliers, shoppingItems, shoppingEntries]
+  );
 
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
@@ -257,7 +266,9 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Navigation secondaire — trois tuiles compactes de même largeur. */}
+      {/* Navigation secondaire — quatre tuiles compactes en 2 × 2. Deux par
+          rangée plutôt que quatre de front : à quatre, « Vue spatiale » et
+          « Inventaire » passeraient sur deux lignes de texte minuscule. */}
       <View className="flex-row gap-4 mt-1">
         <MiniTile
           icon={Eye}
@@ -271,12 +282,22 @@ export default function HomeScreen() {
           tone="ok"
           onPress={() => router.push('/reports' as any)}
         />
+      </View>
+
+      <View className="flex-row gap-4">
         <MiniTile
           icon={Boxes}
           title="Inventaire"
           tone={lowStock.length > 0 ? 'alert' : articles.length > 0 ? 'ok' : 'neutral'}
           count={lowStock.length}
           onPress={() => router.push('/inventory' as any)}
+        />
+        <MiniTile
+          icon={ShoppingCart}
+          title="Courses"
+          tone={toBuy > 0 ? 'ok' : 'neutral'}
+          count={toBuy}
+          onPress={() => router.push('/courses' as any)}
         />
       </View>
     </ScrollView>

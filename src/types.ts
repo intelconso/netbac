@@ -512,6 +512,70 @@ export interface StockMovement {
   deletedAt?: number;
 }
 
+// ─── Liste de courses ────────────────────────────────────────────────────────
+//
+// Univers TOTALEMENT séparé des étiquettes et de l'inventaire : ses produits
+// ne sont pas des `Article`, ses quantités ne sont pas du stock, et rien ne
+// circule entre les deux. Un « Poulet » de la liste de courses et un « Poulet »
+// du catalogue d'inventaire sont deux enregistrements sans lien.
+//
+// Trois entités : le fournisseur (le groupe), le produit du catalogue (ce qu'on
+// PEUT commander) et l'entrée (ce qu'on commande CETTE fois, la quantité).
+// Séparer catalogue et quantités est ce qui permet de vider la liste sans
+// toucher au catalogue.
+
+// Le groupe de la liste. Repris du tableau papier, où la colonne de gauche est
+// un nom de fournisseur — pas une famille de produits.
+export interface Supplier {
+  id: string;
+  name: string;
+  // Note libre affichée sous le nom, sur l'écran comme dans le PDF. Le tableau
+  // papier y met le jour de commande : « lundi pour mardi ou jeudi pour vendredi ».
+  note?: string;
+  order?: number;             // rang d'affichage ; à défaut, ordre de création
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// Un produit du catalogue de courses — ce qui est proposé à la saisie, pas ce
+// qui est commandé. Sa quantité vit dans un ShoppingEntry séparé.
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  // Fournisseur du produit. `undefined` = « Sans fournisseur » : le produit
+  // reste visible et commandable, il n'est jamais masqué.
+  supplierId?: string;
+  order?: number;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
+// La quantité demandée pour la tournée en cours.
+//
+// UN enregistrement PAR produit, jamais un objet global `{ [itemId]: qty }` :
+// applyCloudState fusionne en dernier-écrit-gagne PAR ENREGISTREMENT, donc deux
+// personnes qui remplissent la liste en même temps sur deux téléphones gardent
+// chacune leur ligne au lieu d'écraser toute la liste de l'autre.
+//
+// `id` est l'id du ShoppingItem pour un produit du catalogue — déterministe,
+// donc deux appareils hors ligne qui saisissent le même produit convergent sur
+// UNE ligne au lieu d'en additionner deux.
+//
+// `name` présent = ligne libre : un produit hors catalogue tapé pour cette
+// tournée seulement (id aléatoire, disparaît au vidage, n'entre jamais au
+// catalogue). Son absence signifie que l'entrée pointe un ShoppingItem.
+export interface ShoppingEntry {
+  id: string;
+  qty: number;
+  name?: string;
+  supplierId?: string;
+  modifiedAt: number;
+  // Les lignes libres se suppriment (tombstone) ; une entrée de catalogue se
+  // remet simplement à 0, ce qui la sort de la liste et du PDF.
+  deletedAt?: number;
+}
+
+
 export interface CustomActionType {
   id: string;
   label: string;
@@ -615,6 +679,12 @@ export interface AppState {
   // Catégories d'articles (voir ArticleCategory). `undefined` sur un état
   // d'avant la fonctionnalité — lire via useActiveStore ou avec `?? []`.
   articleCategories: ArticleCategory[];
+  // Liste de courses — aucun rapport avec `articles` / `stockMovements`
+  // ci-dessus (voir Supplier). `undefined` sur un état d'avant la
+  // fonctionnalité : toujours lire via useActiveStore ou avec `?? []`.
+  suppliers: Supplier[];
+  shoppingItems: ShoppingItem[];
+  shoppingEntries: ShoppingEntry[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];
   user: User | null;

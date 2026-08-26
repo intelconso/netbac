@@ -32,5 +32,8 @@ export function useActiveStore() {
   const articles = useMemo(() => (state.articles ?? []).filter((a) => !a.deletedAt), [state.articles]);
   const stockMovements = useMemo(() => (state.stockMovements ?? []).filter((m) => !m.deletedAt), [state.stockMovements]);
   const articleCategories = useMemo(() => (state.articleCategories ?? []).filter((c) => !c.deletedAt), [state.articleCategories]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions, taskPhotos, articles, stockMovements, articleCategories };
+  const suppliers = useMemo(() => (state.suppliers ?? []).filter((s) => !s.deletedAt), [state.suppliers]);
+  const shoppingItems = useMemo(() => (state.shoppingItems ?? []).filter((i) => !i.deletedAt), [state.shoppingItems]);
+  const shoppingEntries = useMemo(() => (state.shoppingEntries ?? []).filter((e) => !e.deletedAt), [state.shoppingEntries]);
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions, taskPhotos, articles, stockMovements, articleCategories, suppliers, shoppingItems, shoppingEntries };
 }

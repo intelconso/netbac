@@ -46,6 +46,9 @@ const CLOUD_KEYS = [
   'articles',
   'stockMovements',
   'articleCategories',
+  'suppliers',
+  'shoppingItems',
+  'shoppingEntries',
   'customActionTypes',
   'defaultActionTypeStates',
   'user',
@@ -181,42 +184,13 @@ export function startSync(uid: string): void {
   //    and NetInfo reconnect handler below will re-fire the push.
   let lastDataSnapshot: string | null = null;
   unsubscribeStore = useStore.subscribe((state) => {
-    const dataKey = JSON.stringify({
-      zones: state.zones,
-      storageUnits: state.storageUnits,
-      tempUnits: state.tempUnits,
-      shelves: state.shelves,
-      bacs: state.bacs,
-      products: state.products,
-      tempLogs: state.tempLogs,
-      cleaningTasks: state.cleaningTasks,
-      oilChecks: state.oilChecks,
-      fridgeTempChecks: state.fridgeTempChecks,
-      fabrications: state.fabrications,
-      fabricationTypes: state.fabricationTypes,
-      cleaningChecks: state.cleaningChecks,
-      cleaningAreas: state.cleaningAreas,
-      pestControlChecks: state.pestControlChecks,
-      pestStations: state.pestStations,
-      pestCadence: state.pestCadence,
-      closedWeekdays: state.closedWeekdays,
-      singleServiceWeekdays: state.singleServiceWeekdays,
-      dayOverrides: state.dayOverrides,
-      receptions: state.receptions,
-      dailyRemarks: state.dailyRemarks,
-      witnessSamples: state.witnessSamples,
-      employees: state.employees,
-      tasks: state.tasks,
-      taskCompletions: state.taskCompletions,
-      taskPhotos: state.taskPhotos,
-      taskReminderHour: state.taskReminderHour,
-      productUnits: state.productUnits,
-      articles: state.articles,
-      stockMovements: state.stockMovements,
-      customActionTypes: state.customActionTypes,
-      defaultActionTypeStates: state.defaultActionTypeStates,
-      user: state.user,
-    });
+    // Empreinte de TOUT ce qui part au cloud, dérivée de CLOUD_KEYS.
+    //
+    // Surtout pas une seconde liste de clés tenue à la main : celle qui vivait
+    // ici avait fini par oublier `articleCategories`, si bien que renommer une
+    // catégorie ne déclenchait aucun push tant qu'une autre donnée ne bougeait
+    // pas. Une clé ajoutée à CLOUD_KEYS est désormais surveillée d'office.
+    const dataKey = JSON.stringify(CLOUD_KEYS.map((k) => (state as any)[k]));
     if (lastDataSnapshot === dataKey) return;
     lastDataSnapshot = dataKey;
     if (debounceTimer) clearTimeout(debounceTimer);

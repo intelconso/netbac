@@ -1,12 +1,18 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, ServiceSlot, Task, TaskCompletion } from '../types';
+import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, ServiceSlot, Task, TaskCompletion, Supplier, ShoppingItem, ShoppingEntry } from '../types';
 import { randomId } from './utils';
 import { deriveColdUnits } from './tempUnits';
 import { nextCheckFrom } from './pestControl';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
 import { taskCompletionId } from './tasks';
+import {
+  DEFAULT_SHOPPING_ITEMS,
+  DEFAULT_SUPPLIERS,
+  findShoppingItem,
+  findSupplier,
+} from './shopping';
 import {
   DEFAULT_ARTICLE_CATEGORIES,
   convertQty,
@@ -116,6 +122,18 @@ interface StoreActions {
   updateArticleCategory: (id: string, patch: { name?: string; color?: string }) => { ok: boolean; error?: string };
   deleteArticleCategory: (id: string) => void;
   restoreDefaultArticleCategories: () => number;
+  // Liste de courses — catalogue séparé de l'inventaire (voir shopping.ts).
+  addSupplier: (data: { name: string; note?: string }) => { ok: boolean; id?: string; error?: string };
+  updateSupplier: (id: string, patch: { name?: string; note?: string }) => { ok: boolean; error?: string };
+  deleteSupplier: (id: string) => void;
+  addShoppingItem: (data: { name: string; supplierId?: string }) => { ok: boolean; id?: string; error?: string };
+  updateShoppingItem: (id: string, patch: { name?: string; supplierId?: string | null }) => { ok: boolean; error?: string };
+  deleteShoppingItem: (id: string) => void;
+  setShoppingQty: (itemId: string, qty: number) => void;
+  addShoppingExtra: (data: { name: string; supplierId?: string; qty?: number }) => { ok: boolean; id?: string; error?: string };
+  removeShoppingExtra: (id: string) => void;
+  clearShoppingList: () => number;
+  restoreDefaultShoppingCatalog: () => number;
   importArticlesFromProducts: () => { created: number; linked: number };
   autoAssignArticleLocations: (options?: { includeZoneOnly?: boolean }) => { placed: number; remaining: number };
   addStockMovement: (data: { articleId: string; kind: StockMovementKind; qty: number; timestamp?: number; operatorName?: string; notes?: string }) => void;
@@ -166,6 +184,12 @@ const INITIAL_STATE: AppState = {
   stockMovements: [],
   // Catégories proposées d'origine, ids fixes — voir DEFAULT_ARTICLE_CATEGORIES.
   articleCategories: DEFAULT_ARTICLE_CATEGORIES.map((c) => ({ ...c, modifiedAt: 0 })),
+  // Catalogue de courses d'origine, ids fixes et `modifiedAt: 0` — même
+  // raisonnement que les catégories ci-dessus : la graine perd contre toute
+  // vraie modification venue du cloud, y compris une suppression.
+  suppliers: DEFAULT_SUPPLIERS.map((s, i) => ({ ...s, order: i, modifiedAt: 0 })),
+  shoppingItems: DEFAULT_SHOPPING_ITEMS.map((i) => ({ ...i, modifiedAt: 0 })),
+  shoppingEntries: [],
   customActionTypes: [],
   defaultActionTypeStates: [],
   user: null,
@@ -185,6 +209,18 @@ const tomb = <T extends { modifiedAt: number; deletedAt?: number }>(item: T): T 
   modifiedAt: Date.now(),
   deletedAt: Date.now(),
 });
+
+// Remet à zéro les quantités de courses visées, sans supprimer les
+// enregistrements : voir setShoppingQty — une ligne physiquement retirée
+// ressusciterait à la première fusion, une ligne à 0 gagne au dernier-écrit.
+// Une ligne libre (`name`) n'existe que par son entrée : elle, on l'enterre.
+function zeroEntries(entries: ShoppingEntry[], doomed: (e: ShoppingEntry) => boolean): ShoppingEntry[] {
+  const now = Date.now();
+  return entries.map((e) => {
+    if (e.deletedAt || !doomed(e)) return e;
+    return e.name ? { ...e, qty: 0, modifiedAt: now, deletedAt: now } : { ...e, qty: 0, modifiedAt: now };
+  });
+}
 
 // Aligne le registre de stock sur une étiquette.
 //
@@ -1110,6 +1146,232 @@ export const useStore = create<AppState & StoreActions>()(
         return missing.length;
       },
 
+      // ─── Liste de courses ──────────────────────────────────────────────
+      //
+      // Catalogue (fournisseurs + produits) et quantités sont deux choses
+      // séparées : vider la liste ne touche jamais au catalogue, supprimer un
+      // produit du catalogue ne laisse jamais sa quantité derrière lui.
+
+      addSupplier: ({ name, note }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { ok: false, error: 'Le nom est vide.' };
+        const clash = findSupplier(get().suppliers ?? [], trimmed);
+        if (clash) return { ok: false, error: `Un fournisseur "${clash.name}" existe déjà.` };
+        const id = randomId();
+        const now = Date.now();
+        set((state) => {
+          const list = state.suppliers ?? [];
+          const order = list.reduce((max, s) => Math.max(max, s.order ?? 0), -1) + 1;
+          return {
+            suppliers: [...list, { id, name: trimmed, ...(note?.trim() ? { note: note.trim() } : {}), order, modifiedAt: now }],
+          };
+        });
+        return { ok: true, id };
+      },
+
+      updateSupplier: (id, patch) => {
+        const list = get().suppliers ?? [];
+        if (!list.some((s) => s.id === id && !s.deletedAt)) return { ok: false, error: 'Fournisseur introuvable.' };
+        if (patch.name !== undefined) {
+          const trimmed = patch.name.trim();
+          if (!trimmed) return { ok: false, error: 'Le nom est vide.' };
+          const clash = findSupplier(list, trimmed);
+          if (clash && clash.id !== id) return { ok: false, error: `Un fournisseur "${clash.name}" existe déjà.` };
+        }
+        const now = Date.now();
+        set((state) => ({
+          suppliers: (state.suppliers ?? []).map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+                  // Note vidée = note retirée, pas une chaîne vide qui traînerait
+                  // dans le PDF sous forme de ligne blanche.
+                  ...(patch.note !== undefined ? { note: patch.note.trim() || undefined } : {}),
+                  modifiedAt: now,
+                }
+              : s
+          ),
+        }));
+        return { ok: true };
+      },
+
+      // Suppression EN CASCADE, contrairement aux catégories d'inventaire : un
+      // produit de courses sans fournisseur n'a nulle part où retomber d'utile,
+      // et laisser quatorze orphelins dans « Sans fournisseur » est pire que de
+      // les supprimer avec leur magasin. L'écran prévient du nombre concerné.
+      deleteSupplier: (id) => set((state) => {
+        const doomed = new Set(
+          (state.shoppingItems ?? []).filter((i) => i.supplierId === id && !i.deletedAt).map((i) => i.id)
+        );
+        return {
+          suppliers: (state.suppliers ?? []).map((s) => (s.id === id ? tomb(s) : s)),
+          shoppingItems: (state.shoppingItems ?? []).map((i) => (doomed.has(i.id) ? tomb(i) : i)),
+          shoppingEntries: zeroEntries(state.shoppingEntries ?? [], (e) => doomed.has(e.id) || e.supplierId === id),
+        };
+      }),
+
+      addShoppingItem: ({ name, supplierId }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { ok: false, error: 'Le nom est vide.' };
+        // Le même nom chez deux fournisseurs différents est normal (Fraise est
+        // à la fois un sirop, un coulis et un fruit) : le doublon ne se juge
+        // que DANS un fournisseur.
+        const clash = findShoppingItem(get().shoppingItems ?? [], trimmed, supplierId);
+        if (clash) return { ok: false, error: `"${clash.name}" est déjà dans cette liste.` };
+        const id = randomId();
+        const now = Date.now();
+        set((state) => {
+          const list = state.shoppingItems ?? [];
+          const order = list
+            .filter((i) => (i.supplierId ?? null) === (supplierId ?? null))
+            .reduce((max, i) => Math.max(max, i.order ?? 0), -1) + 1;
+          return {
+            shoppingItems: [...list, { id, name: trimmed, ...(supplierId ? { supplierId } : {}), order, modifiedAt: now }],
+          };
+        });
+        return { ok: true, id };
+      },
+
+      updateShoppingItem: (id, patch) => {
+        const list = get().shoppingItems ?? [];
+        const current = list.find((i) => i.id === id && !i.deletedAt);
+        if (!current) return { ok: false, error: 'Produit introuvable.' };
+        const nextSupplier = patch.supplierId === undefined
+          ? current.supplierId
+          : (patch.supplierId ?? undefined);
+        const nextName = patch.name !== undefined ? patch.name.trim() : current.name;
+        if (!nextName) return { ok: false, error: 'Le nom est vide.' };
+        const clash = findShoppingItem(list, nextName, nextSupplier);
+        if (clash && clash.id !== id) return { ok: false, error: `"${clash.name}" est déjà dans cette liste.` };
+        const now = Date.now();
+        set((state) => ({
+          shoppingItems: (state.shoppingItems ?? []).map((i) =>
+            i.id === id ? { ...i, name: nextName, supplierId: nextSupplier, modifiedAt: now } : i
+          ),
+        }));
+        return { ok: true };
+      },
+
+      // Le produit part, sa quantité aussi : sans ça, restaurer le produit plus
+      // tard le ferait revenir avec une commande qu'on croyait effacée.
+      deleteShoppingItem: (id) => set((state) => ({
+        shoppingItems: (state.shoppingItems ?? []).map((i) => (i.id === id ? tomb(i) : i)),
+        shoppingEntries: zeroEntries(state.shoppingEntries ?? [], (e) => e.id === id),
+      })),
+
+      // Upsert sur un id DÉTERMINISTE (= l'id du produit) : deux personnes qui
+      // saisissent le même produit hors ligne convergent sur UNE ligne à la
+      // fusion, au lieu d'additionner deux enregistrements concurrents.
+      //
+      // Une quantité à 0 garde son enregistrement — c'est ce qui la fait
+      // gagner sur l'ancienne valeur d'un autre appareil (dernier-écrit-gagne).
+      // Supprimer la ligne, à l'inverse, la laisserait ressusciter au prochain
+      // merge : le cloud a encore la sienne, et la fusion est une union.
+      setShoppingQty: (itemId, qty) => set((state) => {
+        const clean = Number.isFinite(qty) ? Math.max(0, qty) : 0;
+        const entries = state.shoppingEntries ?? [];
+        const now = Date.now();
+        if (entries.some((e) => e.id === itemId)) {
+          return {
+            shoppingEntries: entries.map((e) =>
+              e.id === itemId ? { ...e, qty: clean, deletedAt: undefined, modifiedAt: now } : e
+            ),
+          };
+        }
+        return { shoppingEntries: [...entries, { id: itemId, qty: clean, modifiedAt: now }] };
+      }),
+
+      // Ligne libre : un produit hors catalogue, pour cette tournée seulement.
+      // Si le nom correspond en fait à un produit du catalogue du même
+      // fournisseur, on renseigne CE produit plutôt que de créer un doublon —
+      // sinon la même chose apparaîtrait deux fois sur le PDF.
+      addShoppingExtra: ({ name, supplierId, qty }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { ok: false, error: 'Le nom est vide.' };
+        const amount = Number.isFinite(qty) && (qty as number) > 0 ? (qty as number) : 1;
+        const known = findShoppingItem(get().shoppingItems ?? [], trimmed, supplierId);
+        if (known) {
+          get().setShoppingQty(known.id, amount);
+          return { ok: true, id: known.id };
+        }
+        const id = randomId();
+        const now = Date.now();
+        set((state) => ({
+          shoppingEntries: [
+            ...(state.shoppingEntries ?? []),
+            { id, name: trimmed, ...(supplierId ? { supplierId } : {}), qty: amount, modifiedAt: now },
+          ],
+        }));
+        return { ok: true, id };
+      },
+
+      removeShoppingExtra: (id) => set((state) => ({
+        shoppingEntries: (state.shoppingEntries ?? []).map((e) => (e.id === id ? tomb(e) : e)),
+      })),
+
+      // Fin de tournée : tout revient à zéro, le catalogue est intact.
+      // Les produits du catalogue retombent à 0 (l'enregistrement reste, voir
+      // setShoppingQty), les lignes libres disparaissent pour de bon.
+      clearShoppingList: () => {
+        const live = (get().shoppingEntries ?? []).filter((e) => !e.deletedAt && e.qty > 0);
+        if (!live.length) return 0;
+        const now = Date.now();
+        set((state) => ({
+          shoppingEntries: (state.shoppingEntries ?? []).map((e) => {
+            if (e.deletedAt) return e;
+            if (e.name) return { ...e, qty: 0, modifiedAt: now, deletedAt: now };
+            return e.qty === 0 ? e : { ...e, qty: 0, modifiedAt: now };
+          }),
+        }));
+        return live.length;
+      },
+
+      // Remet le catalogue d'origine supprimé — fournisseurs ET produits.
+      // Ressuscite les tombstones existants au lieu d'en créer des doubles :
+      // les ids de la graine sont fixes.
+      restoreDefaultShoppingCatalog: () => {
+        const suppliers = get().suppliers ?? [];
+        const items = get().shoppingItems ?? [];
+        const missingSuppliers = DEFAULT_SUPPLIERS.filter((d) => {
+          const existing = suppliers.find((s) => s.id === d.id);
+          return !existing || existing.deletedAt;
+        });
+        const missingItems = DEFAULT_SHOPPING_ITEMS.filter((d) => {
+          const existing = items.find((i) => i.id === d.id);
+          return !existing || existing.deletedAt;
+        });
+        if (!missingSuppliers.length && !missingItems.length) return 0;
+        const now = Date.now();
+        set((state) => {
+          const currentSuppliers = state.suppliers ?? [];
+          const currentItems = state.shoppingItems ?? [];
+          const restoredSuppliers = currentSuppliers.map((s) => {
+            const d = missingSuppliers.find((m) => m.id === s.id);
+            return d ? { ...s, name: d.name, note: d.note, deletedAt: undefined, modifiedAt: now } : s;
+          });
+          const addedSuppliers = missingSuppliers
+            .filter((d) => !currentSuppliers.some((s) => s.id === d.id))
+            .map((d) => ({
+              ...d,
+              order: DEFAULT_SUPPLIERS.findIndex((x) => x.id === d.id),
+              modifiedAt: now,
+            }) as Supplier);
+          const restoredItems = currentItems.map((i) => {
+            const d = missingItems.find((m) => m.id === i.id);
+            return d ? { ...i, name: d.name, supplierId: d.supplierId, deletedAt: undefined, modifiedAt: now } : i;
+          });
+          const addedItems = missingItems
+            .filter((d) => !currentItems.some((i) => i.id === d.id))
+            .map((d) => ({ ...d, modifiedAt: now }) as ShoppingItem);
+          return {
+            suppliers: [...restoredSuppliers, ...addedSuppliers],
+            shoppingItems: [...restoredItems, ...addedItems],
+          };
+        });
+        return missingSuppliers.length + missingItems.length;
+      },
+
       // Amorçage du catalogue depuis les étiquettes déjà saisies : un article
       // par nom distinct, dans l'unité la plus utilisée pour ce nom.
       //
@@ -1412,6 +1674,16 @@ export const useStore = create<AppState & StoreActions>()(
             // — y compris une suppression. Une catégorie supprimée sur un appareil
             // ne peut pas ressusciter depuis la graine d'un autre.
             articleCategories: mergeNewer(state.articleCategories ?? [], cloud.articleCategories),
+            // Liste de courses. Le catalogue d'origine a des ids fixes et
+            // `modifiedAt: 0`, donc la graine locale perd contre toute vraie
+            // modification venue du cloud — un fournisseur supprimé sur un
+            // appareil ne ressuscite pas depuis la graine d'un autre.
+            suppliers: mergeNewer(state.suppliers ?? [], cloud.suppliers),
+            shoppingItems: mergeNewer(state.shoppingItems ?? [], cloud.shoppingItems),
+            // Une quantité par produit, id déterministe : deux téléphones qui
+            // remplissent la liste en même temps gardent chacun leurs lignes,
+            // et le dernier à toucher UN produit décide de SA quantité.
+            shoppingEntries: mergeNewer(state.shoppingEntries ?? [], cloud.shoppingEntries),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
             user: state.user ?? cloud.user ?? null,
@@ -1456,6 +1728,9 @@ export const useStore = create<AppState & StoreActions>()(
         articles: state.articles,
         stockMovements: state.stockMovements,
         articleCategories: state.articleCategories,
+        suppliers: state.suppliers,
+        shoppingItems: state.shoppingItems,
+        shoppingEntries: state.shoppingEntries,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
         user: state.user,

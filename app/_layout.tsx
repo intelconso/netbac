@@ -147,6 +147,8 @@ function RootInner() {
             <Stack.Screen name="controls-history" />
             <Stack.Screen name="tasks" />
             <Stack.Screen name="reports" />
+            <Stack.Screen name="courses" />
+            <Stack.Screen name="courses-catalog" />
             <Stack.Screen name="inventory/index" />
             <Stack.Screen name="inventory/[id]" />
             <Stack.Screen name="camera" />
