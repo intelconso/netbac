@@ -48,6 +48,55 @@ npm test
 
 ## Open status
 
+- **Pas-à-pas des tâches (2026-08-26)** — deuxième vue de l'écran Tâches, calquée
+  sur la saisie des températures ([FridgeTempSection](src/components/controls/FridgeTempSection.tsx)) :
+  fil de points, « Tâche N / M », une carte à l'écran, Précédent / Passer.
+  L'idée n'est pas la navigation mais l'inversion de la question : la vue liste
+  demande « qui a fait ça ? » à chaque cochage, le pas-à-pas demande « qui
+  êtes-vous ? » **une fois** puis déroule la tournée de cette personne. Le
+  regroupement par employé en découle — `queueForEmployee()` met ses tâches
+  attribuées d'abord, puis les non attribuées, et laisse dehors celles d'un
+  autre (l'attribution n'étant qu'une indication, la vue liste garde tout
+  accessible). **La liste reste le défaut** : ouvrir l'écran pour cocher une
+  case ne doit pas imposer de traverser un assistant.
+  Les deux vues partagent la capture photo via
+  [useTaskPhotoDrafts](src/lib/useTaskPhotoDrafts.ts) + [TaskPhotoPicker](src/components/TaskPhotoPicker.tsx),
+  sans quoi les règles (compression, brouillon jetable, définitif après
+  validation) divergeraient entre les deux.
+
+- **Tâches « chaque service » (2026-08-26)** — récurrence `perService` : un
+  passage PAR SERVICE, le planning décidant du nombre (`servicesFor()` — deux un
+  jour ouvert, un seul un jour à service unique, aucun un jour fermé). Vocabulaire
+  repris de `FridgeTempCheck` : `ServiceSlot = 'debut' | 'fin'`.
+  Conséquence structurante : l'unité manipulée par les écrans n'est plus la tâche
+  mais le **passage** — `dueTasksFor()` rend des `TaskInstance` (`{ task, service?,
+  key }`) et non plus des `Task`. `taskCompletionId()` ne suffixe l'id du service
+  que pour une tâche `perService`, donc **aucun cochage déjà enregistré ne change
+  d'identité**. `completeTask` ignore un `service` passé sur une autre récurrence,
+  sans quoi un seul passage se scinderait en deux enregistrements.
+  La pastille Début/Fin n'apparaît qu'un jour à deux services : « Début » seul
+  n'aurait pas de « fin » en face.
+
+- **Photos de tâches (2026-08-26)** — le cochage d'une tâche peut porter des
+  photos, la preuve que le travail a été fait. Elles sont une entité de premier
+  niveau (`AppState.taskPhotos`, voir `TaskPhoto`) et **pas** un tableau sur
+  `TaskCompletion` : `applyCloudState` fusionne en dernier-écrit-gagne PAR
+  ENREGISTREMENT, donc deux appareils photographiant la même tâche le même jour
+  se seraient écrasés. Le lien passe par `completionId` déterministe, d'où la
+  survie au décochage/recochage. Elles empruntent la file offline des photos
+  produit ([photoQueue.ts](src/lib/photoQueue.ts), même preset Cloudinary
+  `netbac_products`) : `PendingPhoto.kind` distingue les deux, et son absence
+  vaut `'product'` pour ne pas orpheliner une photo mise en file avant la
+  fonctionnalité. Règles arrêtées : **toujours facultatives** (rien ne bloque
+  jamais un cochage), **nombre illimité**, et **jamais supprimables** — pas de
+  `deletedAt` sur `TaskPhoto`, l'effacement n'existe que sur le brouillon local
+  tant que la feuille n'est pas validée. Relecture dans
+  [tasks.tsx](app/tasks.tsx) et [controls-history.tsx](app/controls-history.tsx),
+  aperçu plein écran via [TaskPhotoStrip](src/components/TaskPhotoStrip.tsx).
+  **Point de vigilance :** tout l'état part dans UN document Firestore (limite
+  1 Mio) ; « illimité » + conservation définitive fait grossir `taskPhotos` sans
+  borne — c'est là que la limite tombera en premier.
+
 - **Inventaire v1 (2026-08-24)** — suivi de stock par article, alimenté **uniquement**
   par les étiquettes. Le stock n'est jamais stocké : il est dérivé d'un registre
   append-only (`AppState.stockMovements`) parce qu'un compteur se corromprait sous

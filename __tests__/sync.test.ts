@@ -135,3 +135,26 @@ describe('pullFromCloud', () => {
     expect(mockGetDoc).not.toHaveBeenCalled();
   });
 });
+
+// Un pull échoué ne doit JAMAIS être suivi d'un push : pushToCloud écrit le
+// document ENTIER, donc publier un état local qui n'a rien lu efface d'un coup
+// ce qu'un autre appareil avait mis dans le cloud.
+describe('pullFromCloud — contrat de retour', () => {
+  it('rend true quand la lecture aboutit', async () => {
+    mockSnapshot.exists.mockReturnValue(false);
+    await expect(pullFromCloud('user-A')).resolves.toBe(true);
+    expect(useStore.getState().lastSyncStatus).toBe('synced');
+  });
+
+  it('rend false et passe en erreur quand la lecture échoue', async () => {
+    mockGetDoc.mockRejectedValueOnce(new Error('network down'));
+    await expect(pullFromCloud('user-A')).resolves.toBe(false);
+    expect(useStore.getState().lastSyncStatus).toBe('error');
+    expect(useStore.getState().lastSyncError).toBe('network down');
+  });
+
+  it('rend false sans rien lire quand il n\'y a pas d\'uid', async () => {
+    await expect(pullFromCloud(null)).resolves.toBe(false);
+    expect(mockGetDoc).not.toHaveBeenCalled();
+  });
+});

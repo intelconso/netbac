@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, Task, TaskCompletion } from '../types';
+import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, ServiceSlot, Task, TaskCompletion } from '../types';
 import { randomId } from './utils';
 import { deriveColdUnits } from './tempUnits';
 import { nextCheckFrom } from './pestControl';
@@ -104,8 +104,10 @@ interface StoreActions {
   updateTask: (id: string, patch: Partial<Omit<Task, 'id' | 'order' | 'modifiedAt'>>) => void;
   deleteTask: (id: string) => void;
   moveTask: (id: string, dir: 'up' | 'down') => void;
-  completeTask: (taskId: string, data: { employeeId?: string; operatorName: string; notes?: string }, options?: { dayKey?: number }) => void;
-  uncompleteTask: (taskId: string, dayKey?: number) => void;
+  completeTask: (taskId: string, data: { employeeId?: string; operatorName: string; notes?: string }, options?: { dayKey?: number; service?: ServiceSlot }) => void;
+  uncompleteTask: (taskId: string, dayKey?: number, service?: ServiceSlot) => void;
+  addTaskPhoto: (data: { taskId: string; dayKey?: number; service?: ServiceSlot; employeeId?: string; operatorName: string }) => string;
+  setTaskPhotoUrl: (id: string, url: string) => void;
   setTaskReminderHour: (hour: number | undefined) => void;
   addArticle: (data: { name: string; unit: string; minQty?: number; categoryId?: string } & ArticleLocation) => string;
   updateArticle: (id: string, patch: Partial<Pick<Article, 'name' | 'unit' | 'minQty' | 'categoryId'> & ArticleLocation>) => { ok: boolean; error?: string };
@@ -124,6 +126,8 @@ interface StoreActions {
   setOffline: (isOffline: boolean) => void;
   enqueuePendingPhoto: (productId: string, localPath: string) => void;
   removePendingPhoto: (productId: string) => void;
+  enqueueTaskPhotoUpload: (taskPhotoId: string, localPath: string) => void;
+  removeTaskPhotoUpload: (taskPhotoId: string) => void;
   setSyncState: (state: { status?: AppState['lastSyncStatus']; at?: number | null; error?: string | null }) => void;
   applyCloudState: (cloud: Partial<AppState>) => void;
   resetState: () => void;
@@ -155,6 +159,7 @@ const INITIAL_STATE: AppState = {
   employees: [],
   tasks: [],
   taskCompletions: [],
+  taskPhotos: [],
   taskReminderHour: undefined,
   productUnits: ['kg', 'g', 'pce', 'L', 'broche', 'bacs'],
   articles: [],
@@ -880,13 +885,18 @@ export const useStore = create<AppState & StoreActions>()(
         const task = state.tasks.find((t) => t.id === taskId);
         if (!task) return {};
         const dayKey = startOfDayMs(options?.dayKey ?? Date.now());
-        const id = taskCompletionId(taskId, dayKey);
+        // Le service n'est porté que par une tâche « chaque service » : sur
+        // toute autre, un service passé par erreur scinderait le cochage en
+        // deux enregistrements pour une seule case à cocher.
+        const service = task.frequency === 'perService' ? options?.service : undefined;
+        const id = taskCompletionId(taskId, dayKey, service);
         const now = Date.now();
         const entry: TaskCompletion = {
           id,
           taskId,
           taskLabel: task.label,
           dayKey,
+          ...(service ? { service } : {}),
           timestamp: now,
           ...(data.employeeId ? { employeeId: data.employeeId } : {}),
           operatorName: data.operatorName.trim(),
@@ -897,10 +907,46 @@ export const useStore = create<AppState & StoreActions>()(
         return { taskCompletions: [...rest, entry] };
       }),
 
-      uncompleteTask: (taskId, dayKey) => set((state) => {
-        const id = taskCompletionId(taskId, startOfDayMs(dayKey ?? Date.now()));
+      uncompleteTask: (taskId, dayKey, service) => set((state) => {
+        const id = taskCompletionId(taskId, startOfDayMs(dayKey ?? Date.now()), service);
         return { taskCompletions: state.taskCompletions.map((c) => (c.id === id ? tomb(c) : c)) };
       }),
+
+      // Une photo entre au moment où on valide le cochage — jamais avant : tant
+      // que la feuille est ouverte le fichier n'est qu'un brouillon local, que
+      // l'employé peut encore jeter. Une fois ici, elle ne sort plus (pas de
+      // deletedAt sur TaskPhoto) : c'est ce qui en fait un témoignage.
+      //
+      // `url` reste absente jusqu'à l'envoi ; la file (photoQueue.ts) la
+      // remplit via setTaskPhotoUrl. Un chemin local ne sert à rien sur un
+      // autre appareil, il n'est donc jamais porté par l'enregistrement.
+      addTaskPhoto: ({ taskId, dayKey, service, employeeId, operatorName }) => {
+        const day = startOfDayMs(dayKey ?? Date.now());
+        const id = randomId();
+        const now = Date.now();
+        set((state) => ({
+          taskPhotos: [
+            ...(state.taskPhotos ?? []),
+            {
+              id,
+              completionId: taskCompletionId(taskId, day, service),
+              taskId,
+              dayKey: day,
+              capturedAt: now,
+              ...(employeeId ? { employeeId } : {}),
+              operatorName: operatorName.trim(),
+              modifiedAt: now,
+            },
+          ],
+        }));
+        return id;
+      },
+
+      setTaskPhotoUrl: (id, url) => set((state) => ({
+        taskPhotos: (state.taskPhotos ?? []).map((p) =>
+          (p.id === id ? { ...p, url, modifiedAt: Date.now() } : p)
+        ),
+      })),
 
       setTaskReminderHour: (hour) => set({ taskReminderHour: hour }),
 
@@ -1253,6 +1299,18 @@ export const useStore = create<AppState & StoreActions>()(
         pendingPhotos: state.pendingPhotos.filter((p) => p.productId !== productId),
       })),
 
+      // Contrairement aux produits, un cochage peut porter plusieurs photos :
+      // les entrées s'accumulent au lieu de se remplacer, une par TaskPhoto.
+      enqueueTaskPhotoUpload: (taskPhotoId, localPath) => set((state) => ({
+        pendingPhotos: [
+          ...state.pendingPhotos.filter((p) => p.taskPhotoId !== taskPhotoId),
+          { kind: 'task', taskPhotoId, localPath, queuedAt: Date.now() },
+        ],
+      })),
+      removeTaskPhotoUpload: (taskPhotoId) => set((state) => ({
+        pendingPhotos: state.pendingPhotos.filter((p) => p.taskPhotoId !== taskPhotoId),
+      })),
+
       setSyncState: ({ status, at, error }) =>
         set((state) => ({
           lastSyncStatus: status ?? state.lastSyncStatus,
@@ -1322,6 +1380,9 @@ export const useStore = create<AppState & StoreActions>()(
             employees: mergeNewer(state.employees ?? [], cloud.employees),
             tasks: mergeNewer(state.tasks ?? [], cloud.tasks),
             taskCompletions: mergeNewer(state.taskCompletions ?? [], cloud.taskCompletions),
+            // Une photo ne se supprime pas, mais son enregistrement change une
+            // fois (l'envoi y écrit `url`) : newer-wins, pas append-only.
+            taskPhotos: mergeNewer(state.taskPhotos ?? [], cloud.taskPhotos),
             // Réglage — local wins once set ; un appareil neuf prend la valeur du cloud.
             taskReminderHour: state.taskReminderHour ?? cloud.taskReminderHour,
             cleaningAreas: Array.from(new Set([...(state.cleaningAreas ?? []), ...((cloud.cleaningAreas as string[]) ?? [])])),
@@ -1389,6 +1450,7 @@ export const useStore = create<AppState & StoreActions>()(
         employees: state.employees,
         tasks: state.tasks,
         taskCompletions: state.taskCompletions,
+        taskPhotos: state.taskPhotos,
         taskReminderHour: state.taskReminderHour,
         productUnits: state.productUnits,
         articles: state.articles,

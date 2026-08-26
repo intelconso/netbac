@@ -293,12 +293,19 @@ export interface Employee {
   deletedAt?: number;
 }
 
+// Le service couvert par un cochage — même vocabulaire que FridgeTempCheck,
+// qui relève déjà les températures en début ET en fin de service.
+export type ServiceSlot = 'debut' | 'fin';
+
 // Récurrence d'une tâche.
-// once     : ponctuelle — quitte la liste une fois faite
-// daily    : chaque jour de service
-// weekdays : uniquement les jours cochés (getDay() : 0 = dim … 6 = sam)
-// monthly  : une fois par mois, le `monthDay`-ième jour (clampé à la fin du mois)
-export type TaskFrequency = 'once' | 'daily' | 'weekdays' | 'monthly';
+// once       : ponctuelle — quitte la liste une fois faite
+// daily      : chaque jour de service, une fois
+// perService : une fois PAR SERVICE — deux fois un jour ouvert (début + fin),
+//              une seule fois un jour à service unique. C'est le planning de
+//              service qui décide, pas la tâche : voir servicesFor().
+// weekdays   : uniquement les jours cochés (getDay() : 0 = dim … 6 = sam)
+// monthly    : une fois par mois, le `monthDay`-ième jour (clampé à la fin du mois)
+export type TaskFrequency = 'once' | 'daily' | 'perService' | 'weekdays' | 'monthly';
 
 // Tâche de la checklist d'équipe — le travail quotidien non réglementaire
 // (poubelles, hotte, stocks…), par opposition aux contrôles HACCP du registre.
@@ -321,13 +328,18 @@ export interface Task {
 // le libellé et le nom : supprimer une tâche ou un employé n'efface jamais
 // l'historique de qui a fait quoi.
 export interface TaskCompletion {
-  // Déterministe — `${taskId}-${dayKey}`, voir taskCompletionId(). Deux
-  // appareils qui cochent la même tâche le même jour convergent sur un seul
-  // enregistrement au lieu d'en créer deux. Même principe que dayOverrideId().
+  // Déterministe — `${taskId}-${dayKey}`, suffixé du service pour une tâche
+  // « chaque service » ; voir taskCompletionId(). Deux appareils qui cochent la
+  // même tâche le même jour convergent sur un seul enregistrement au lieu d'en
+  // créer deux. Même principe que dayOverrideId().
   id: string;
   taskId: string;
   taskLabel: string;          // snapshot du libellé au moment du cochage
   dayKey: number;             // début de la journée couverte (ms, heure locale)
+  // Service couvert — présent uniquement pour une tâche `perService`. Absent
+  // ailleurs, y compris sur tous les cochages d'avant la fonctionnalité, ce qui
+  // laisse leur id inchangé.
+  service?: ServiceSlot;
   timestamp: number;          // moment réel du cochage
   employeeId?: string;
   operatorName: string;       // snapshot du nom — voir OilCheck.operatorName
@@ -335,6 +347,35 @@ export interface TaskCompletion {
   modifiedAt: number;
   // Décocher = tombstone. Recocher le même jour réveille le même enregistrement.
   deletedAt?: number;
+}
+
+// Photo attachée à un cochage de tâche — le témoignage que le travail a bien
+// été fait, et fait proprement. Volontairement une entité de premier niveau
+// plutôt qu'un tableau sur TaskCompletion : la fusion cloud est un
+// dernier-écrit-gagne PAR ENREGISTREMENT (voir applyCloudState), donc des
+// photos rangées dans la complétion se seraient écrasées entre deux appareils
+// photographiant la même tâche le même jour. Ici chaque photo a son id, donc
+// l'union les garde toutes — même raisonnement que stockMovements.
+//
+// Une photo ne se supprime jamais : c'est ce qui en fait une preuve. Il n'y a
+// donc pas de `deletedAt` — l'effacement n'existe qu'avant validation du
+// cochage, tant que le fichier n'est encore qu'un brouillon local.
+export interface TaskPhoto {
+  id: string;
+  // Le cochage couvert — `${taskId}-${dayKey}`, voir taskCompletionId().
+  // Le lien passe par cet id déterministe plutôt que par une référence à
+  // l'objet, donc décocher puis recocher retrouve ses photos.
+  completionId: string;
+  taskId: string;
+  dayKey: number;             // journée couverte (ms, heure locale)
+  // secure_url Cloudinary, écrite par la file d'attente une fois l'envoi
+  // réussi. Absente = photo encore en local sur l'appareil qui l'a prise
+  // (voir PendingPhoto) ; les autres appareils ne la voient pas encore.
+  url?: string;
+  capturedAt: number;
+  employeeId?: string;
+  operatorName: string;       // snapshot du nom — voir TaskCompletion.operatorName
+  modifiedAt: number;
 }
 
 // Plan de lutte contre les nuisibles — PMS, arrêté du 9/05/1995 art. 17.
@@ -560,6 +601,9 @@ export interface AppState {
   employees: Employee[];
   tasks: Task[];
   taskCompletions: TaskCompletion[];
+  // Photos jointes aux cochages (voir TaskPhoto). `undefined` sur un état
+  // d'avant la fonctionnalité — lire via useActiveStore ou avec `?? []`.
+  taskPhotos: TaskPhoto[];
   taskReminderHour?: number;
   productUnits: string[];
   // Inventaire. `articles` est le catalogue (admin), `stockMovements` le
@@ -588,11 +632,20 @@ export interface AppState {
   pendingPhotos: PendingPhoto[];
 }
 
-// One product photo awaiting upload. `localPath` is a file:// URI in the app's
-// document directory (persistent). Keyed by productId — one pending photo per
-// product; a re-capture replaces the entry.
+// One photo awaiting upload. `localPath` is a file:// URI in the app's document
+// directory (persistent).
+//
+// `kind` says what the photo belongs to. It is OPTIONAL and absent means
+// 'product': entries queued before task photos existed have no kind, and an
+// app update must not orphan a photo someone took offline.
+//   - 'product' → keyed by productId, one pending photo per product; a
+//     re-capture replaces the entry.
+//   - 'task'    → keyed by taskPhotoId, one entry per TaskPhoto (a cochage can
+//     carry several, so entries accumulate instead of replacing).
 export interface PendingPhoto {
-  productId: string;
+  kind?: 'product' | 'task';
+  productId?: string;
+  taskPhotoId?: string;
   localPath: string;
   queuedAt: number;
 }

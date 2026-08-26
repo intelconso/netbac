@@ -10,6 +10,9 @@ import { fabricationDetails } from '../src/lib/fabrication';
 import { addMonths, endOfMonth, format, getDay, startOfDay, startOfMonth } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { interventionLabel } from '../src/lib/pestControl';
+import { photosForCompletion, SERVICE_LABELS } from '../src/lib/tasks';
+import TaskPhotoStrip from '../src/components/TaskPhotoStrip';
+import { TaskPhoto } from '../src/types';
 
 // Historique des contrôles HACCP — un jour affiché à la fois, groupé par type
 // de contrôle. Chaque contrôle du registre alimente la même liste en mappant
@@ -27,11 +30,14 @@ interface DayEntry {
   badgeTone?: 'primary' | 'danger';
   // Rows shown in the detail modal when the card is tapped.
   details: { label: string; value: string }[];
+  // Photos jointes à l'enregistrement, montrées en vignettes dans la fiche et
+  // ouvrables en plein écran. Seules les tâches en portent aujourd'hui.
+  photos?: TaskPhoto[];
 }
 
 export default function ControlsHistoryScreen() {
   const router = useRouter();
-  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits, taskCompletions } = useActiveStore();
+  const { oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, storageUnits, taskCompletions, taskPhotos } = useActiveStore();
   const [selected, setSelected] = useState<DayEntry | null>(null);
   // Which control group is expanded for the displayed day.
   const [openControl, setOpenControl] = useState<string | null>(null);
@@ -224,21 +230,32 @@ export default function ControlsHistoryScreen() {
     // que `timestamp` est l'heure réelle du cochage.
     const taskEntries: DayEntry[] = taskCompletions
       .filter((c) => c.dayKey === dayStart)
-      .map((c) => ({
-        id: c.id,
-        control: 'Tâches',
-        icon: ListChecks,
-        ok: true,
-        title: c.taskLabel,
-        subtitle: `${format(new Date(c.timestamp), 'HH:mm', { locale: fr })} • ${c.operatorName}`,
-        timestamp: c.timestamp,
-        details: [
-          { label: 'Tâche', value: c.taskLabel },
-          { label: 'Faite par', value: c.operatorName },
-          { label: 'Date', value: format(new Date(c.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
-          ...(c.notes ? [{ label: 'Remarque', value: c.notes }] : []),
-        ],
-      }));
+      .map((c) => {
+        const photos = photosForCompletion(c.taskId, c.dayKey, taskPhotos, c.service);
+        // Le service n'est porté que par une tâche « chaque service » ; sans lui
+        // deux passages du même jour seraient indistinguables dans la liste.
+        const svc = c.service ? SERVICE_LABELS[c.service] : undefined;
+        return {
+          id: c.id,
+          control: 'Tâches',
+          icon: ListChecks,
+          ok: true,
+          title: c.taskLabel,
+          subtitle: `${format(new Date(c.timestamp), 'HH:mm', { locale: fr })} • ${c.operatorName}${svc ? ` • ${svc}` : ''}`,
+          timestamp: c.timestamp,
+          // Le badge annonce la preuve depuis la liste : sans lui il faudrait
+          // ouvrir chaque fiche pour savoir laquelle en porte une.
+          ...(photos.length ? { badge: `${photos.length} photo${photos.length > 1 ? 's' : ''}` } : {}),
+          details: [
+            { label: 'Tâche', value: c.taskLabel },
+            ...(svc ? [{ label: 'Service', value: svc }] : []),
+            { label: 'Faite par', value: c.operatorName },
+            { label: 'Date', value: format(new Date(c.timestamp), "EEEE d MMMM yyyy 'à' HH:mm", { locale: fr }) },
+            ...(c.notes ? [{ label: 'Remarque', value: c.notes }] : []),
+          ],
+          ...(photos.length ? { photos } : {}),
+        };
+      });
 
     // Single day shown — group by control type for readability.
     // (Plats témoins masqué pour l'instant — restauration collective only.)
@@ -248,7 +265,7 @@ export default function ControlsHistoryScreen() {
     }
     return [...byControl.entries()]
       .map(([control, list]) => ({ control, list: list.sort((a, b) => b.timestamp - a.timestamp) }));
-  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, taskCompletions, storageUnits, dayStart, dayEnd]);
+  }, [oilChecks, fridgeTempChecks, fabrications, cleaningChecks, receptions, dailyRemarks, pestControlChecks, taskCompletions, taskPhotos, storageUnits, dayStart, dayEnd]);
 
   return (
     <SafeAreaView className="flex-1 bg-background">
@@ -419,14 +436,23 @@ export default function ControlsHistoryScreen() {
               <Text className="text-base font-black uppercase text-gray-900 text-center">{selected?.control}</Text>
             </View>
 
-            <View className="gap-3">
+            <ScrollView className="max-h-96" contentContainerStyle={{ gap: 12 }}>
               {selected?.details.map(({ label, value }) => (
                 <View key={label} className="bg-gray-50 p-3 rounded-xl">
                   <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{label}</Text>
                   <Text className="text-xs font-bold text-gray-900 mt-1">{value}</Text>
                 </View>
               ))}
-            </View>
+
+              {!!selected?.photos?.length && (
+                <View className="bg-gray-50 p-3 rounded-xl gap-2">
+                  <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    Photos ({selected.photos.length})
+                  </Text>
+                  <TaskPhotoStrip photos={selected.photos} size="lg" />
+                </View>
+              )}
+            </ScrollView>
 
             <Pressable onPress={() => setSelected(null)} className="bg-gray-900 py-4 rounded-2xl">
               <Text className="text-white font-black uppercase text-xs text-center">Fermer</Text>

@@ -182,10 +182,6 @@ export default function TasksManager() {
                 </Pressable>
               ))}
             </View>
-            <Text className="text-[10px] font-medium text-gray-400">
-              Simple indication : n'importe qui peut cocher la tâche, et c'est le nom de la
-              personne qui la fait réellement qui est enregistré.
-            </Text>
           </View>
         )}
 

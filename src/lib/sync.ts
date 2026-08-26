@@ -40,6 +40,7 @@ const CLOUD_KEYS = [
   'employees',
   'tasks',
   'taskCompletions',
+  'taskPhotos',
   'taskReminderHour',
   'productUnits',
   'articles',
@@ -105,8 +106,13 @@ export async function pushToCloud(uid: string | null): Promise<void> {
 
 // Pulling merges cloud into local (union-merge in applyCloudState).
 // Local items are NEVER deleted because the cloud doesn't have them.
-export async function pullFromCloud(uid: string | null): Promise<void> {
-  if (!uid) return;
+//
+// Rend `true` si l'état distant a bien été lu et fusionné, `false` si la
+// lecture a échoué. Ce booléen n'est pas cosmétique : voir startSync — pousser
+// après un pull échoué remplace tout le document distant par un état local
+// éventuellement périmé, puisque pushToCloud écrit le document ENTIER.
+export async function pullFromCloud(uid: string | null): Promise<boolean> {
+  if (!uid) return false;
   const { applyCloudState, setSyncState } = useStore.getState();
   setSyncState({ status: 'syncing' });
   try {
@@ -119,9 +125,22 @@ export async function pullFromCloud(uid: string | null): Promise<void> {
       }
     }
     setSyncState({ status: 'synced', at: Date.now(), error: null });
+    return true;
   } catch (e: any) {
     setSyncState({ status: 'error', error: e?.message ?? 'Unknown error' });
+    return false;
   }
+}
+
+// Relire avant de réécrire. Jamais `pushToCloud` seul sur un chemin de reprise :
+// l'état 'error' est justement celui que laisse un pull échoué, et pousser là
+// remplacerait tout le document distant par un local qui n'a rien lu. Quand le
+// pull réussit, le push qui suit publie la fusion des deux côtés — ce qui couvre
+// aussi le cas « le pull était passé, c'est le push qui avait échoué ».
+function resync(uid: string): void {
+  pullFromCloud(uid)
+    .then((ok) => { if (ok) return pushToCloud(uid); })
+    .catch(() => {});
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -138,9 +157,13 @@ export function startSync(uid: string): void {
 
   // 1. Initial pull (union-merge) followed by a push of the merged state.
   //    Local-only items make it up; cloud-only items land locally. No loss.
-  pullFromCloud(uid)
-    .then(() => pushToCloud(uid))
-    .catch(() => {});
+  //
+  //    Le push n'a lieu QUE si le pull a réussi. pushToCloud écrit le document
+  //    entier (setDoc) : pousser sans avoir lu, c'est publier un état local qui
+  //    ignore tout ce que le cloud contient — et donc effacer d'un coup ce qu'un
+  //    autre appareil y avait mis. En cas d'échec on ne pousse pas : le statut
+  //    reste 'error', et le timer de reprise (4) rejouera le cycle.
+  resync(uid);
 
   // 2. Live subscription for cross-device sync. Union-merge means incoming
   //    remote items are added/updated locally without ever deleting local items
@@ -185,6 +208,7 @@ export function startSync(uid: string): void {
       employees: state.employees,
       tasks: state.tasks,
       taskCompletions: state.taskCompletions,
+      taskPhotos: state.taskPhotos,
       taskReminderHour: state.taskReminderHour,
       productUnits: state.productUnits,
       articles: state.articles,
@@ -203,19 +227,19 @@ export function startSync(uid: string): void {
 
   // 4. Periodic retry while in error state. Catches "network was down at the
   //    moment of push AND no new mutation has happened since." Heartbeat is
-  //    cheap; it only pushes when there's something to retry.
+  //    cheap; it only resyncs when there's something to retry.
   retryTimer = setInterval(() => {
     if (!activeUid) return;
     const status = useStore.getState().lastSyncStatus;
-    if (status === 'error') pushToCloud(activeUid);
+    if (status === 'error') resync(activeUid);
   }, RETRY_MS);
 
-  // 5. Reconnect-driven flush. The instant connectivity returns, push the
-  //    full local state up. Doesn't wait for the next mutation or retry tick.
+  // 5. Reconnect-driven flush. The instant connectivity returns, resync.
+  //    Doesn't wait for the next mutation or retry tick.
   unsubscribeNetInfo = NetInfo.addEventListener((state: NetInfoState) => {
     if (state.isConnected && activeUid) {
       const status = useStore.getState().lastSyncStatus;
-      if (status === 'error' || status === 'idle') pushToCloud(activeUid);
+      if (status === 'error' || status === 'idle') resync(activeUid);
     }
   });
 }

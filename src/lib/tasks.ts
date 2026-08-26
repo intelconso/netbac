@@ -9,21 +9,51 @@
 // Le planning de service prime sur tout : un jour fermé n'attend aucune tâche.
 
 import { endOfMonth, getDate, getDay } from 'date-fns';
-import { Task, TaskCompletion, TaskFrequency } from '../types';
+import { ServiceSlot, Task, TaskCompletion, TaskFrequency, TaskPhoto } from '../types';
 import { DaySchedule, dayStatus, startOfDayMs, WEEKDAYS } from './serviceDays';
 
 export const TASK_FREQUENCIES: { value: TaskFrequency; label: string }[] = [
   { value: 'daily', label: 'Chaque jour' },
+  { value: 'perService', label: 'Chaque service' },
   { value: 'weekdays', label: 'Jours choisis' },
   { value: 'monthly', label: 'Chaque mois' },
   { value: 'once', label: 'Ponctuelle' },
 ];
 
+export const SERVICE_LABELS: Record<ServiceSlot, string> = {
+  debut: 'Début de service',
+  fin: 'Fin de service',
+};
+
+export const SERVICE_SHORT: Record<ServiceSlot, string> = {
+  debut: 'Début',
+  fin: 'Fin',
+};
+
+// Les services attendus une journée donnée. C'est le planning qui décide du
+// nombre de passages, pas la tâche : un jour à service unique n'en attend qu'un,
+// un jour fermé aucun. Même lecture que les relevés de température.
+export function servicesFor(dayMs: number, schedule: DaySchedule): ServiceSlot[] {
+  switch (dayStatus(dayMs, schedule)) {
+    case 'closed':
+      return [];
+    case 'single':
+      return ['debut'];
+    default:
+      return ['debut', 'fin'];
+  }
+}
+
 // Id déterministe d'un cochage : deux appareils qui cochent la même tâche le
 // même jour convergent sur un seul enregistrement au lieu d'en créer deux.
 // Même principe que dayOverrideId() pour les exceptions de planning.
-export function taskCompletionId(taskId: string, dayMs: number): string {
-  return `${taskId}-${startOfDayMs(dayMs)}`;
+//
+// Le service n'entre dans l'id que pour une tâche « chaque service » — sans
+// suffixe, l'id est exactement celui d'avant la fonctionnalité, donc aucun
+// cochage déjà enregistré ne change d'identité.
+export function taskCompletionId(taskId: string, dayMs: number, service?: ServiceSlot): string {
+  const base = `${taskId}-${startOfDayMs(dayMs)}`;
+  return service ? `${base}-${service}` : base;
 }
 
 // Jour du mois où tombe une tâche mensuelle, clampé à la fin du mois : réglée
@@ -41,6 +71,8 @@ export function frequencyLabel(task: Pick<Task, 'frequency' | 'weekdays' | 'mont
       const picked = WEEKDAYS.filter((w) => (task.weekdays ?? []).includes(w.value));
       return picked.length ? picked.map((w) => w.short).join(' · ') : 'Aucun jour choisi';
     }
+    case 'perService':
+      return 'Chaque service';
     case 'monthly':
       return `Le ${task.monthDay ?? 1} du mois`;
     case 'once':
@@ -49,13 +81,14 @@ export function frequencyLabel(task: Pick<Task, 'frequency' | 'weekdays' | 'mont
   }
 }
 
-// Le cochage vivant d'une tâche pour une journée donnée, s'il existe.
+// Le cochage vivant d'une tâche pour une journée (et un service) donnés.
 export function completionFor(
   taskId: string,
   dayMs: number,
-  completions: TaskCompletion[]
+  completions: TaskCompletion[],
+  service?: ServiceSlot
 ): TaskCompletion | undefined {
-  const id = taskCompletionId(taskId, dayMs);
+  const id = taskCompletionId(taskId, dayMs, service);
   return completions.find((c) => c.id === id && !c.deletedAt);
 }
 
@@ -66,6 +99,9 @@ export function isTaskDueOn(task: Task, dayMs: number, completions: TaskCompleti
   const d0 = startOfDayMs(dayMs);
   switch (task.frequency) {
     case 'daily':
+    // Attendue tous les jours de service ; c'est dueTasksFor() qui la dédouble
+    // en un passage par service.
+    case 'perService':
       return true;
     case 'weekdays':
       return (task.weekdays ?? []).includes(getDay(new Date(d0)));
@@ -83,22 +119,71 @@ export function isTaskDueOn(task: Task, dayMs: number, completions: TaskCompleti
   }
 }
 
-// Les tâches attendues ce jour-là, dans l'ordre réglé par l'admin.
-// Jour fermé → aucune tâche : le restaurant n'est jamais "en retard" un jour
-// de fermeture, exactement comme pour les contrôles du registre.
+// Un passage attendu : une tâche, et pour une tâche « chaque service » le
+// service concerné. `key` est l'id du cochage correspondant — l'écran s'en sert
+// comme clé de liste, puisqu'une même tâche peut apparaître deux fois.
+export interface TaskInstance {
+  task: Task;
+  service?: ServiceSlot;
+  key: string;
+}
+
+// Les passages attendus ce jour-là, dans l'ordre réglé par l'admin.
+// Jour fermé → aucun : le restaurant n'est jamais "en retard" un jour de
+// fermeture, exactement comme pour les contrôles du registre.
+//
+// Une tâche « chaque service » est dédoublée ici (début + fin) plutôt que dans
+// l'écran : c'est le planning qui dicte le nombre de passages, et un jour à
+// service unique n'en attend qu'un seul.
 export function dueTasksFor(
   dayMs: number,
   tasks: Task[],
   completions: TaskCompletion[],
   schedule: DaySchedule
-): Task[] {
-  if (dayStatus(dayMs, schedule) === 'closed') return [];
+): TaskInstance[] {
+  const services = servicesFor(dayMs, schedule);
+  if (services.length === 0) return [];
   return tasks
     .filter((t) => !t.deletedAt && isTaskDueOn(t, dayMs, completions))
-    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+    .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
+    .flatMap((task) =>
+      task.frequency === 'perService'
+        ? services.map((service) => ({ task, service, key: taskCompletionId(task.id, dayMs, service) }))
+        : [{ task, key: taskCompletionId(task.id, dayMs) }]
+    );
 }
 
-// Nombre de tâches restant à faire — alimente le badge de la tuile Tâches.
+// La file d'un employé pour un pas-à-pas : d'abord ce qui lui est attribué,
+// puis ce qui n'est attribué à personne — ces tâches-là attendent n'importe qui.
+// Ce qui est attribué à QUELQU'UN D'AUTRE reste dehors : c'est sa tournée, pas
+// la nôtre. Rien n'est verrouillé pour autant — la vue liste garde tout à portée
+// de clic, l'attribution n'étant qu'une indication (voir Task.assigneeId).
+//
+// L'ordre réglé par l'admin est conservé à l'intérieur de chaque groupe.
+export function queueForEmployee(
+  instances: TaskInstance[],
+  employeeId?: string
+): TaskInstance[] {
+  const mine = employeeId
+    ? instances.filter((i) => i.task.assigneeId === employeeId)
+    : [];
+  const unassigned = instances.filter((i) => !i.task.assigneeId);
+  return [...mine, ...unassigned];
+}
+
+// Point de reprise naturel d'un pas-à-pas : le premier passage pas encore
+// coché. Tout fait → on revient au début plutôt que de sortir de la file.
+export function firstPendingIndex(
+  queue: TaskInstance[],
+  dayMs: number,
+  completions: TaskCompletion[]
+): number {
+  const idx = queue.findIndex((i) => !completionFor(i.task.id, dayMs, completions, i.service));
+  return idx < 0 ? 0 : idx;
+}
+
+// Nombre de passages restant à faire — alimente le badge de la tuile Tâches.
+// Une tâche « chaque service » non faite compte donc pour deux un jour ouvert.
 export function pendingTaskCount(
   dayMs: number,
   tasks: Task[],
@@ -106,8 +191,26 @@ export function pendingTaskCount(
   schedule: DaySchedule
 ): number {
   return dueTasksFor(dayMs, tasks, completions, schedule).filter(
-    (t) => !completionFor(t.id, dayMs, completions)
+    ({ task, service }) => !completionFor(task.id, dayMs, completions, service)
   ).length;
+}
+
+// Les photos jointes à un cochage, les plus anciennes d'abord — l'ordre dans
+// lequel elles ont été prises raconte le déroulé de la tâche.
+//
+// Le lien passe par `completionId` (déterministe, voir taskCompletionId) et non
+// par une référence à l'objet : décocher tombstone la complétion mais ne touche
+// pas aux photos, donc recocher le même jour les retrouve toutes.
+export function photosForCompletion(
+  taskId: string,
+  dayMs: number,
+  photos: TaskPhoto[],
+  service?: ServiceSlot
+): TaskPhoto[] {
+  const id = taskCompletionId(taskId, dayMs, service);
+  return photos
+    .filter((p) => p.completionId === id)
+    .sort((a, b) => a.capturedAt - b.capturedAt);
 }
 
 // Dernier employé à avoir coché quelque chose — sert à pré-sélectionner son nom

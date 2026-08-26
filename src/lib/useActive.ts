@@ -26,8 +26,11 @@ export function useActiveStore() {
   const employees = useMemo(() => (state.employees ?? []).filter((e) => !e.deletedAt), [state.employees]);
   const tasks = useMemo(() => (state.tasks ?? []).filter((t) => !t.deletedAt), [state.tasks]);
   const taskCompletions = useMemo(() => (state.taskCompletions ?? []).filter((c) => !c.deletedAt), [state.taskCompletions]);
+  // TaskPhoto n'a pas de deletedAt (une preuve ne s'efface pas) : seul le `?? []`
+  // est utile ici, pour un état d'avant la fonctionnalité.
+  const taskPhotos = useMemo(() => state.taskPhotos ?? [], [state.taskPhotos]);
   const articles = useMemo(() => (state.articles ?? []).filter((a) => !a.deletedAt), [state.articles]);
   const stockMovements = useMemo(() => (state.stockMovements ?? []).filter((m) => !m.deletedAt), [state.stockMovements]);
   const articleCategories = useMemo(() => (state.articleCategories ?? []).filter((c) => !c.deletedAt), [state.articleCategories]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions, articles, stockMovements, articleCategories };
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions, taskPhotos, articles, stockMovements, articleCategories };
 }
