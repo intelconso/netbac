@@ -35,5 +35,8 @@ export function useActiveStore() {
   const suppliers = useMemo(() => (state.suppliers ?? []).filter((s) => !s.deletedAt), [state.suppliers]);
   const shoppingItems = useMemo(() => (state.shoppingItems ?? []).filter((i) => !i.deletedAt), [state.shoppingItems]);
   const shoppingEntries = useMemo(() => (state.shoppingEntries ?? []).filter((e) => !e.deletedAt), [state.shoppingEntries]);
-  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions, taskPhotos, articles, stockMovements, articleCategories, suppliers, shoppingItems, shoppingEntries };
+  // Les mots périmés sont filtrés à part (visibleNotes) : ils ne sont pas
+  // supprimés, seulement trop vieux. Ici on ne retire que les tombstones.
+  const notes = useMemo(() => (state.notes ?? []).filter((n) => !n.deletedAt), [state.notes]);
+  return { ...state, zones, storageUnits, shelves, bacs, products, cleaningTasks, oilChecks, fridgeTempChecks, fabrications, fabricationTypes, cleaningChecks, receptions, dailyRemarks, witnessSamples, pestControlChecks, pestStations, dayOverrides, employees, tasks, taskCompletions, taskPhotos, articles, stockMovements, articleCategories, suppliers, shoppingItems, shoppingEntries, notes };
 }

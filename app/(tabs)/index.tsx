@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks, Boxes, ShoppingCart } from 'lucide-react-native';
+import { Plus, AlertTriangle, ClipboardCheck, FileText, Eye, ListChecks, Boxes, ShoppingCart, StickyNote, ChevronRight } from 'lucide-react-native';
 import { useActiveStore } from '../../src/lib/useActive';
 import { cn, getDaysRemaining } from '../../src/lib/utils';
 import { resolveTempUnits } from '../../src/lib/tempUnits';
@@ -9,6 +9,8 @@ import { dayStatus, startOfDayMs } from '../../src/lib/serviceDays';
 import { pendingTaskCount } from '../../src/lib/tasks';
 import { lowStockArticles } from '../../src/lib/inventory';
 import { requestedCount } from '../../src/lib/shopping';
+import { NOTE_PAPER, noteTimeLabel, visibleNotes } from '../../src/lib/notes';
+import { Note } from '../../src/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -33,6 +35,69 @@ const TONES: Record<Tone, {
   task:    { bg: '#8B5CF6', title: '#FFFFFF', sub: 'rgba(255,255,255,0.7)', iconBg: 'rgba(255,255,255,0.2)', icon: '#FFFFFF', count: 'rgba(255,255,255,0.35)' },
   taskOk:  { bg: '#FFFFFF', bordered: true, title: '#111827', sub: '#8B5CF6', iconBg: 'rgba(139,92,246,0.1)', icon: '#8B5CF6', count: '#E5E7EB' },
 };
+
+// Aperçu des notes sur le tableau de bord — les trois dernières, pas le
+// panneau entier. Un rectangle qui grandit à chaque note repousserait les
+// tuiles hors de l'écran ; on montre assez pour donner envie d'ouvrir, et
+// l'écran /notes fait le reste.
+const NOTES_PREVIEW = 3;
+
+function NotesBoard({ notes, onPress }: { notes: Note[]; onPress: () => void }) {
+  const shown = notes.slice(0, NOTES_PREVIEW);
+  const hidden = notes.length - shown.length;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      className="bg-white rounded-3xl border border-gray-100 p-4 gap-3 active:bg-gray-50"
+    >
+      <View className="flex-row items-center gap-3">
+        <View className="w-9 h-9 rounded-2xl items-center justify-center" style={{ backgroundColor: NOTE_PAPER.bg }}>
+          <StickyNote size={18} color={NOTE_PAPER.accent} />
+        </View>
+        <Text className="flex-1 text-[10px] font-black text-gray-900 uppercase tracking-widest">
+          Notes
+        </Text>
+        {notes.length > 0 && (
+          <Text className="text-[10px] font-black uppercase tracking-widest" style={{ color: NOTE_PAPER.accent }}>
+            {notes.length}
+          </Text>
+        )}
+        <ChevronRight size={16} color="#D1D5DB" />
+      </View>
+
+      {shown.length === 0 ? (
+        <Text className="text-[11px] font-medium text-gray-400">
+          Aucune note. Touchez pour en laisser une à l'équipe.
+        </Text>
+      ) : (
+        <View className="gap-2">
+          {shown.map((n) => (
+            <View
+              key={n.id}
+              className="rounded-2xl border px-3 py-2.5 gap-1"
+              style={{ backgroundColor: NOTE_PAPER.bg, borderColor: NOTE_PAPER.border }}
+            >
+              {/* Deux lignes au plus : le rectangle doit garder la même
+                  hauteur qu'on y écrive trois mots ou trois phrases. */}
+              <Text className="text-[12px] font-medium text-gray-900 leading-4" numberOfLines={2}>
+                {n.text}
+              </Text>
+              <Text className="text-[9px] font-black text-gray-500 uppercase tracking-widest" numberOfLines={1}>
+                {n.authorName} · {noteTimeLabel(n.createdAt)}
+              </Text>
+            </View>
+          ))}
+          {hidden > 0 && (
+            <Text className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+              + {hidden} autre{hidden > 1 ? 's' : ''}
+            </Text>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
 
 interface TileProps {
   icon: React.ComponentType<{ size?: number; color?: string }>;
@@ -108,7 +173,7 @@ export default function HomeScreen() {
     products, user, oilChecks, fridgeTempChecks, cleaningChecks, cleaningAreas,
     storageUnits, tempUnits, closedWeekdays, singleServiceWeekdays, dayOverrides,
     tasks, taskCompletions, articles, stockMovements,
-    suppliers, shoppingItems, shoppingEntries,
+    suppliers, shoppingItems, shoppingEntries, notes,
   } = useActiveStore();
 
   const activeProducts = useMemo(() => products.filter((p) => p.status === 'active'), [products]);
@@ -170,6 +235,11 @@ export default function HomeScreen() {
     () => requestedCount({ suppliers, shoppingItems, shoppingEntries }),
     [suppliers, shoppingItems, shoppingEntries]
   );
+
+  // Notes — celles encore valides, de la plus récente à la plus ancienne. Le
+  // panneau n'a rien à voir avec les remarques de la journée du registre : voir
+  // notes.ts.
+  const boardNotes = useMemo(() => visibleNotes(notes), [notes]);
 
   const firstName = (user?.name || '').split(' ')[0];
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
@@ -304,6 +374,12 @@ export default function HomeScreen() {
           count={toBuy}
           onPress={() => router.push('/courses' as any)}
         />
+      </View>
+
+      {/* Notes — sous les tuiles, en pleine largeur. C'est de la lecture,
+          pas une action : le bloc n'a donc ni la forme ni la couleur d'une tuile. */}
+      <View className="mt-1">
+        <NotesBoard notes={boardNotes} onPress={() => router.push('/notes' as any)} />
       </View>
     </ScrollView>
   );

@@ -576,6 +576,36 @@ export interface ShoppingEntry {
 }
 
 
+// Notes d'équipe — le panneau de liège du restaurant, en pixels.
+//
+// À ne PAS confondre avec `DailyRemark` juste au-dessus : une remarque de la
+// journée est une pièce du registre HACCP, datée, signée d'un contrôleur et
+// imprimée dans les rapports. Un mot est l'inverse — de la communication entre
+// collègues, jetable, qui ne part dans aucun PDF et n'engage rien. Les mélanger
+// mettrait « penser à racheter du sopalin » dans un document réglementaire.
+//
+// Un mot est un ENREGISTREMENT à part entière (id + modifiedAt), et surtout pas
+// une entrée d'un objet global : `applyCloudState` fusionne en dernier-écrit-
+// gagne PAR ENREGISTREMENT, donc deux personnes qui écrivent en même temps
+// gardent chacune leur mot au lieu d'écraser tout le panneau de l'autre.
+export interface Note {
+  id: string;
+  text: string;
+  createdAt: number;
+  // Auteur. Il ne peut PAS être déduit du compte : tous les téléphones du
+  // restaurant sont connectés au même compte Google, donc l'authentification
+  // dit toujours le même nom. On le demande, comme le pas-à-pas des tâches
+  // demande « qui êtes-vous ? ».
+  //
+  // `authorName` est dénormalisé à côté de `employeeId` — même raison que
+  // `TaskCompletion.operatorName` : un employé supprimé de l'équipe ne doit pas
+  // effacer la signature des mots qu'il a laissés.
+  employeeId?: string;
+  authorName: string;
+  modifiedAt: number;
+  deletedAt?: number;
+}
+
 export interface CustomActionType {
   id: string;
   label: string;
@@ -685,6 +715,10 @@ export interface AppState {
   suppliers: Supplier[];
   shoppingItems: ShoppingItem[];
   shoppingEntries: ShoppingEntry[];
+  // Notes d'équipe (voir Note). Sans rapport avec `dailyRemarks` : rien
+  // ici n'entre dans le registre ni dans les rapports. `undefined` sur un état
+  // d'avant la fonctionnalité — lire via useActiveStore ou avec `?? []`.
+  notes: Note[];
   customActionTypes: CustomActionType[];
   defaultActionTypeStates: DefaultActionTypeState[];
   user: User | null;

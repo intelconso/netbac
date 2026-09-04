@@ -33,7 +33,13 @@ jest.mock('@react-native-firebase/auth', () => ({
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore } from '../src/lib/store';
-import { pushToCloud, pullFromCloud, serializeStateForCloud } from '../src/lib/sync';
+import {
+  FOREGROUND_MIN_MS,
+  pullFromCloud,
+  pushToCloud,
+  serializeStateForCloud,
+  shouldResyncOnForeground,
+} from '../src/lib/sync';
 
 const initialStoreState = useStore.getState();
 
@@ -156,5 +162,46 @@ describe('pullFromCloud — contrat de retour', () => {
   it('rend false sans rien lire quand il n\'y a pas d\'uid', async () => {
     await expect(pullFromCloud(null)).resolves.toBe(false);
     expect(mockGetDoc).not.toHaveBeenCalled();
+  });
+});
+
+// Le filet de retour au premier plan.
+//
+// Le mécanisme lui-même n'est que de l'abonnement natif ; toute sa règle tient
+// dans `shouldResyncOnForeground`, testée ici. Ce qu'elle protège : avant, seul
+// un démarrage à froid relisait le cloud — il fallait tuer l'app pour être sûr
+// d'avoir les dernières notes.
+describe('shouldResyncOnForeground', () => {
+  const T = 1_000_000;
+
+  it('relit en revenant de l\'arrière-plan', () => {
+    expect(shouldResyncOnForeground('background', 'active', 0, T)).toBe(true);
+  });
+
+  // iOS passe par 'inactive' (volet de notifications, appel entrant) sans que
+  // l'app soit jamais partie : ce n'est pas un retour.
+  it('relit aussi depuis \'inactive\'', () => {
+    expect(shouldResyncOnForeground('inactive', 'active', 0, T)).toBe(true);
+  });
+
+  it('ne relit pas en PARTANT en arrière-plan', () => {
+    expect(shouldResyncOnForeground('active', 'background', 0, T)).toBe(false);
+    expect(shouldResyncOnForeground('active', 'inactive', 0, T)).toBe(false);
+  });
+
+  it('ne relit pas sur un \'active\' qui suit un \'active\'', () => {
+    expect(shouldResyncOnForeground('active', 'active', 0, T)).toBe(false);
+  });
+
+  // Une permission accordée ou un retour d'appareil photo font clignoter
+  // l'AppState. Sans ce garde-fou, chaque clignotement réécrirait TOUT le
+  // document — la synchro pousse le document entier, pas un delta.
+  it('étouffe une rafale de bascules', () => {
+    expect(shouldResyncOnForeground('background', 'active', T - 1, T)).toBe(false);
+    expect(shouldResyncOnForeground('background', 'active', T - FOREGROUND_MIN_MS + 1, T)).toBe(false);
+  });
+
+  it('relit de nouveau une fois le délai écoulé', () => {
+    expect(shouldResyncOnForeground('background', 'active', T - FOREGROUND_MIN_MS, T)).toBe(true);
   });
 });

@@ -1,5 +1,8 @@
 import { doc, setDoc, getDoc, onSnapshot } from '@react-native-firebase/firestore';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+// `AppState` est déjà le nom de l'état applicatif (../types) : l'AppState de
+// React Native — premier plan / arrière-plan — est donc aliasé.
+import { AppState as RNAppState, AppStateStatus } from 'react-native';
 import { db } from './firebase';
 import { useStore } from './store';
 import { AppState } from '../types';
@@ -7,6 +10,30 @@ import { AppState } from '../types';
 const COLLECTION = 'users';
 const DEBOUNCE_MS = 1000;
 const RETRY_MS = 30_000;
+
+// Délai minimal entre deux relectures déclenchées par un retour au premier plan.
+//
+// Sans lui, chaque aller-retour rechargerait tout le document : ouvrir le volet
+// de notifications, accorder une permission ou revenir de l'appareil photo font
+// passer l'app par 'inactive' puis 'active'. Dix secondes de retard sur une
+// note ne se voient pas ; une rafale d'écritures complètes, si.
+export const FOREGROUND_MIN_MS = 10_000;
+
+// Faut-il relire en revenant au premier plan ?
+//
+// Isolé du branchement natif pour être vérifiable : c'est la seule règle du
+// mécanisme, le reste n'est que de l'abonnement. Deux conditions — un VRAI
+// retour (on ne relit pas sur 'inactive', ni sur un 'active' qui suit un
+// 'active'), et pas de rafale.
+export function shouldResyncOnForeground(
+  previous: AppStateStatus,
+  next: AppStateStatus,
+  lastResyncAt: number,
+  now: number
+): boolean {
+  if (next !== 'active' || previous === 'active') return false;
+  return now - lastResyncAt >= FOREGROUND_MIN_MS;
+}
 
 // Allowlist of data fields that belong in the cloud doc. Everything else on
 // the store object (Zustand actions, sync metadata, UI flags) is excluded —
@@ -49,6 +76,7 @@ const CLOUD_KEYS = [
   'suppliers',
   'shoppingItems',
   'shoppingEntries',
+  'notes',
   'customActionTypes',
   'defaultActionTypeStates',
   'user',
@@ -151,6 +179,9 @@ let retryTimer: ReturnType<typeof setInterval> | null = null;
 let unsubscribeStore: (() => void) | null = null;
 let unsubscribeFirestore: (() => void) | null = null;
 let unsubscribeNetInfo: (() => void) | null = null;
+let appStateSub: { remove: () => void } | null = null;
+let lastAppState: AppStateStatus = RNAppState.currentState;
+let lastForegroundResyncAt = 0;
 let activeUid: string | null = null;
 
 export function startSync(uid: string): void {
@@ -216,6 +247,33 @@ export function startSync(uid: string): void {
       if (status === 'error' || status === 'idle') resync(activeUid);
     }
   });
+
+  // 6. Retour au premier plan → relecture, quel que soit le statut.
+  //
+  //    C'est le filet qui manquait. Les points (4) et (5) ne rattrapent qu'un
+  //    statut 'error' : ils ne servent à rien quand l'abonnement (2) est mort
+  //    en silence — socket gelée par Android pendant la mise en arrière-plan,
+  //    sans erreur nulle part. L'app se croyait alors synchronisée en affichant
+  //    un état vieux de plusieurs heures.
+  //
+  //    Avant, seul un démarrage à froid relisait : `startSync` est appelé une
+  //    fois par changement d'uid, et sort tôt si l'uid n'a pas bougé. Il fallait
+  //    donc TUER l'app pour être sûr d'être à jour — revenir dessus depuis
+  //    l'arrière-plan ne relisait rien.
+  //
+  //    `resync` et non un simple `pullFromCloud` : une lecture seule passerait
+  //    le statut à 'synced' et masquerait un push local encore en échec, que
+  //    plus personne ne rejouerait ensuite. Pull PUIS push republie la fusion et
+  //    rétablit le vrai statut.
+  appStateSub = RNAppState.addEventListener('change', (next: AppStateStatus) => {
+    const previous = lastAppState;
+    lastAppState = next;
+    if (!activeUid) return;
+    const now = Date.now();
+    if (!shouldResyncOnForeground(previous, next, lastForegroundResyncAt, now)) return;
+    lastForegroundResyncAt = now;
+    resync(activeUid);
+  });
 }
 
 export function stopSync(): void {
@@ -239,5 +297,11 @@ export function stopSync(): void {
     unsubscribeNetInfo();
     unsubscribeNetInfo = null;
   }
+  if (appStateSub) {
+    appStateSub.remove();
+    appStateSub = null;
+  }
+  // Remis à zéro pour que la prochaine session relise sans attendre le délai.
+  lastForegroundResyncAt = 0;
   activeUid = null;
 }

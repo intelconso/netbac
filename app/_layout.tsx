@@ -100,6 +100,7 @@ function RootInner() {
   const closedWeekdays = useStore((s) => s.closedWeekdays);
   const singleServiceWeekdays = useStore((s) => s.singleServiceWeekdays);
   const dayOverrides = useStore((s) => s.dayOverrides);
+  const notes = useStore((s) => s.notes);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -130,6 +131,19 @@ function RootInner() {
     return () => clearTimeout(t);
   }, [tasks, taskCompletions, taskReminderHour, closedWeekdays, singleServiceWeekdays, dayOverrides]);
 
+  // Ménage des notes : celles de plus de 30 jours sont enterrées et leur
+  // texte jeté. Tout l'état de l'app tient dans UN document Firestore plafonné
+  // à 1 Mio — un panneau que personne ne vide finirait par manger ce budget.
+  //
+  // `purgeExpiredNotes` ne touche à rien quand il n'y a rien à enterrer, donc
+  // cet effet peut se rejouer à chaque changement de `notes` sans déclencher de
+  // synchro ni boucler sur lui-même. Décalé après les deux salves de rappels,
+  // pour la même raison qu'elles sont décalées entre elles.
+  useEffect(() => {
+    const t = setTimeout(() => { useStore.getState().purgeExpiredNotes(); }, 2500);
+    return () => clearTimeout(t);
+  }, [notes]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -147,6 +161,7 @@ function RootInner() {
             <Stack.Screen name="controls-history" />
             <Stack.Screen name="tasks" />
             <Stack.Screen name="reports" />
+            <Stack.Screen name="notes" />
             <Stack.Screen name="courses" />
             <Stack.Screen name="courses-catalog" />
             <Stack.Screen name="inventory/index" />

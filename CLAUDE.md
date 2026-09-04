@@ -48,6 +48,49 @@ npm test
 
 ## Open status
 
+- **Notes (2026-09-04)** — panneau de notes que l'équipe se laisse, en
+  rectangle pleine largeur SOUS les tuiles du tableau de bord, et écran
+  [notes.tsx](app/notes.tsx) pour lire et écrire. **Rien à voir avec
+  `DailyRemark`** : une remarque de la journée est une pièce du registre HACCP,
+  datée, signée d'un contrôleur et imprimée dans les rapports ; une note est de
+  la communication entre collègues, jetable, qui ne part dans aucun PDF. Les
+  mélanger mettrait « racheter du sopalin » dans un document réglementaire.
+  Décision de cadrage, comme Courses vs Inventaire.
+  La synchro est gratuite : tous les téléphones du restaurant sont sur LE MÊME
+  compte Google, donc un seul `users/{uid}` et l'abonnement `onSnapshot` déjà en
+  place. Corollaire moins agréable : l'authentification dit toujours le même nom,
+  donc **l'auteur ne peut pas être déduit** — il se choisit dans `employees`,
+  comme le pas-à-pas des tâches demande « qui êtes-vous ? ». `authorName` est
+  dénormalisé à côté de `employeeId` (même raison que `TaskCompletion.operatorName` :
+  un employé retiré de l'équipe n'efface pas ses notes).
+  **Une note PAR enregistrement**, jamais un `{ notes: [...] }` global :
+  `applyCloudState` fusionne en dernier-écrit-gagne PAR ENREGISTREMENT, donc deux
+  personnes qui écrivent en même temps gardent chacune la leur. Même
+  raisonnement que `ShoppingEntry` et `TaskPhoto`.
+  **Péremption à 30 jours, en deux temps** — parce que tout l'état tient dans UN
+  document Firestore (1 Mio) et qu'un panneau que personne ne vide grossit sans
+  fin. `visibleNotes()` la CALCULE depuis `createdAt` : pur, donc tous les
+  appareils s'accordent sans que personne n'écrive, même hors ligne. Masquer ne
+  rend rien : `purgeExpiredNotes()` (appelé à l'ouverture depuis
+  [_layout.tsx](app/_layout.tsx)) enterre et **jette le texte**, ce qui rend les
+  octets. La tombstone reste — la retirer ferait ressusciter la note au premier
+  appareil qui la détient encore. `purgeExpiredNotes` rend 0 sans rien écrire
+  quand il n'y a rien à faire, sinon l'effet boucherait sur lui-même.
+  Le tri est sur `createdAt` et non `modifiedAt` : corriger une faute ne
+  catapulte pas une vieille note en haut du panneau.
+  L'aperçu du tableau de bord montre **trois notes au plus, deux lignes chacune** :
+  un rectangle qui grandit à chaque note repousserait les tuiles hors de l'écran.
+  **UN seul papier**, pas de palette : choisir une couleur, c'est une décision de
+  plus avant d'écrire, sur un panneau dont tout l'intérêt est d'aller plus vite
+  qu'un SMS — et sans convention d'équipe écrite quelque part, le rose ne veut
+  rien dire de plus que le jaune. Voir `NOTE_PAPER`.
+  **Piège Android :** l'écran met son champ en barre fixe en bas, et depuis
+  l'edge-to-edge (Expo 54) Android ne rétrécit plus la fenêtre sous le clavier
+  malgré `adjustResize` — d'où `behavior="padding"` sur les DEUX plateformes,
+  contrairement au reste de l'app dont les champs sont dans la liste déroulante.
+  Verrouillé par [notes.test.ts](__tests__/notes.test.ts) : fusion à deux
+  appareils, frontière exacte du TTL, et purge qui n'écrit pas pour rien.
+
 - **Courses (2026-08-26)** — liste de ce qu'il faut acheter, **totalement
   séparée des étiquettes et de l'inventaire** : catalogue à part, quantités à
   part, aucun `Article` ni `StockMovement` n'est lu ou écrit. Décision de

@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, ServiceSlot, Task, TaskCompletion, Supplier, ShoppingItem, ShoppingEntry } from '../types';
+import { AppState, ActionType, Article, ArticleCategory, Bac, CleaningCheck, CustomActionType, DailyRemark, DayOverride, DayServiceStatus, DefaultActionTypeState, Fabrication, FabricationField, FabricationType, FridgeTempCheck, OilCheck, PestCadence, PestControlCheck, PestStation, Product, ReceptionCheck, StockMovement, StockMovementKind, TempUnit, User, WitnessSample, Zone, StorageUnit, Shelf, TemperatureLog, CleaningTask, Employee, ServiceSlot, Task, TaskCompletion, Supplier, ShoppingItem, ShoppingEntry, Note } from '../types';
 import { randomId } from './utils';
 import { deriveColdUnits } from './tempUnits';
 import { nextCheckFrom } from './pestControl';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
 import { taskCompletionId } from './tasks';
+import { expiredNoteIds } from './notes';
 import {
   DEFAULT_SHOPPING_ITEMS,
   DEFAULT_SUPPLIERS,
@@ -134,6 +135,10 @@ interface StoreActions {
   removeShoppingExtra: (id: string) => void;
   clearShoppingList: () => number;
   restoreDefaultShoppingCatalog: () => number;
+  addNote: (data: { text: string; employeeId?: string; authorName: string }) => void;
+  updateNote: (id: string, patch: { text: string }) => void;
+  deleteNote: (id: string) => void;
+  purgeExpiredNotes: () => number;
   importArticlesFromProducts: () => { created: number; linked: number };
   autoAssignArticleLocations: (options?: { includeZoneOnly?: boolean }) => { placed: number; remaining: number };
   addStockMovement: (data: { articleId: string; kind: StockMovementKind; qty: number; timestamp?: number; operatorName?: string; notes?: string }) => void;
@@ -190,6 +195,7 @@ const INITIAL_STATE: AppState = {
   suppliers: DEFAULT_SUPPLIERS.map((s, i) => ({ ...s, order: i, modifiedAt: 0 })),
   shoppingItems: DEFAULT_SHOPPING_ITEMS.map((i) => ({ ...i, modifiedAt: 0 })),
   shoppingEntries: [],
+  notes: [],
   customActionTypes: [],
   defaultActionTypeStates: [],
   user: null,
@@ -1327,6 +1333,66 @@ export const useStore = create<AppState & StoreActions>()(
         return live.length;
       },
 
+      // ─── Notes d'équipe ────────────────────────────────────────────────
+      //
+      // Un mot par enregistrement, jamais un tableau réécrit en bloc : la
+      // fusion est dernier-écrit-gagne PAR ENREGISTREMENT, donc deux personnes
+      // qui écrivent en même temps gardent chacune leur mot (voir Note).
+
+      addNote: ({ text, employeeId, authorName }) => set((state) => {
+        const t = text.trim();
+        if (!t) return {};
+        const now = Date.now();
+        return {
+          notes: [
+            ...(state.notes ?? []),
+            {
+              id: randomId(),
+              text: t,
+              createdAt: now,
+              ...(employeeId ? { employeeId } : {}),
+              authorName: authorName.trim(),
+              modifiedAt: now,
+            } as Note,
+          ],
+        };
+      }),
+
+      // `createdAt` ne bouge pas : corriger une faute ne remet pas le mot en
+      // haut du panneau et ne lui rachète pas 30 jours de vie.
+      updateNote: (id, patch) => set((state) => ({
+        notes: (state.notes ?? []).map((n) => {
+          if (n.id !== id) return n;
+          const text = patch.text.trim();
+          if (!text) return n;
+          return { ...n, text, modifiedAt: Date.now() };
+        }),
+      })),
+
+      deleteNote: (id) => set((state) => ({
+        notes: (state.notes ?? []).map((n) => (n.id === id ? tomb(n) : n)),
+      })),
+
+      // Enterre les mots périmés et JETTE LEUR TEXTE — c'est le seul geste qui
+      // rend vraiment des octets au document (1 Mio pour tout l'état). La
+      // tombstone reste : la retirer ferait ressusciter le mot au premier
+      // appareil qui le détient encore.
+      //
+      // Rend le nombre enterré, et surtout 0 quand il n'y a rien à faire —
+      // l'appelant (voir _layout.tsx) tourne à chaque ouverture de l'app et ne
+      // doit pas déclencher une synchro pour rien.
+      purgeExpiredNotes: () => {
+        const doomed = new Set(expiredNoteIds(get().notes));
+        if (!doomed.size) return 0;
+        const now = Date.now();
+        set((state) => ({
+          notes: (state.notes ?? []).map((n) => (
+            doomed.has(n.id) ? { ...n, text: '', modifiedAt: now, deletedAt: now } : n
+          )),
+        }));
+        return doomed.size;
+      },
+
       // Remet le catalogue d'origine supprimé — fournisseurs ET produits.
       // Ressuscite les tombstones existants au lieu d'en créer des doubles :
       // les ids de la graine sont fixes.
@@ -1684,6 +1750,10 @@ export const useStore = create<AppState & StoreActions>()(
             // remplissent la liste en même temps gardent chacun leurs lignes,
             // et le dernier à toucher UN produit décide de SA quantité.
             shoppingEntries: mergeNewer(state.shoppingEntries ?? [], cloud.shoppingEntries),
+            // Notes. Newer-wins par note : deux téléphones qui en écrivent
+            // un chacun de leur côté finissent avec les deux, et l'effacement
+            // d'un mot se propage par sa tombstone comme partout ailleurs.
+            notes: mergeNewer(state.notes ?? [], cloud.notes),
             customActionTypes: mergeNewer(state.customActionTypes, cloud.customActionTypes),
             defaultActionTypeStates: mergeNewer(state.defaultActionTypeStates as any, cloud.defaultActionTypeStates as any),
             user: state.user ?? cloud.user ?? null,
@@ -1731,6 +1801,7 @@ export const useStore = create<AppState & StoreActions>()(
         suppliers: state.suppliers,
         shoppingItems: state.shoppingItems,
         shoppingEntries: state.shoppingEntries,
+        notes: state.notes,
         customActionTypes: state.customActionTypes,
         defaultActionTypeStates: state.defaultActionTypeStates,
         user: state.user,
