@@ -116,7 +116,7 @@ export function buildReportHtml(state: AppState, f: ReportFilter): string {
              <td>${formatDate(p.addedAt)}</td>
              <td>${formatDate(p.dlc)}</td>
              <td>${p.status === 'active' ? '—' : formatDate(p.usedAt ?? p.modifiedAt)}</td>
-             <td><span class="badge ${statusClass(p.status)}">${statusLabel(p.status)}</span></td>
+             <td><span class="badge ${statusClass(p.status)}">${statusLabel(p.status)}${p.autoUsed ? ' (auto)' : ''}</span></td>
            </tr>`).join('')}</tbody>
        </table>`}`
     : '';

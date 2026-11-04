@@ -8,6 +8,7 @@ import { nextCheckFrom } from './pestControl';
 import { dayOverrideId, startOfDayMs } from './serviceDays';
 import { taskCompletionId } from './tasks';
 import { expiredNoteIds } from './notes';
+import { staleLabelIds } from './usedAt';
 import {
   DEFAULT_SHOPPING_ITEMS,
   DEFAULT_SUPPLIERS,
@@ -139,6 +140,7 @@ interface StoreActions {
   updateNote: (id: string, patch: { text: string }) => void;
   deleteNote: (id: string) => void;
   purgeExpiredNotes: () => number;
+  autoUseStaleLabels: () => number;
   importArticlesFromProducts: () => { created: number; linked: number };
   autoAssignArticleLocations: (options?: { includeZoneOnly?: boolean }) => { placed: number; remaining: number };
   addStockMovement: (data: { articleId: string; kind: StockMovementKind; qty: number; timestamp?: number; operatorName?: string; notes?: string }) => void;
@@ -1390,6 +1392,33 @@ export const useStore = create<AppState & StoreActions>()(
             doomed.has(n.id) ? { ...n, text: '', modifiedAt: now, deletedAt: now } : n
           )),
         }));
+        return doomed.size;
+      },
+
+      // Passe en « Utilisé » les étiquettes oubliées 24 h après leur DLC.
+      // Rend 0 sans rien écrire quand il n'y a rien à faire : l'effet de
+      // _layout.tsx rejoue à chaque changement de `products`.
+      autoUseStaleLabels: () => {
+        const doomed = new Set(staleLabelIds(get().products, Date.now()));
+        if (!doomed.size) return 0;
+        const now = Date.now();
+        set((state) => {
+          let stockMovements = state.stockMovements;
+          const products = state.products.map((p) => {
+            if (!doomed.has(p.id)) return p;
+            const touched: Product = {
+              ...p,
+              status: 'used',
+              usedAt: p.dlc,
+              autoUsed: true,
+              modifiedAt: now,
+              syncStatus: state.isOffline ? 'offline' : 'pending',
+            };
+            stockMovements = reconcileProductMovements(touched, state.articles, stockMovements);
+            return touched;
+          });
+          return { products, stockMovements };
+        });
         return doomed.size;
       },
 

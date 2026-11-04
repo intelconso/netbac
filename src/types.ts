@@ -81,6 +81,10 @@ export interface Product {
   // user back-dates a "Utilisé" action (typically because the label expired
   // before they remembered to mark it).
   usedAt?: number;
+  // Posé quand l'app a clôturé l'étiquette d'elle-même, 24 h après la DLC,
+  // faute de cochage (voir `staleLabelIds`). `usedAt` vaut alors la DLC : la
+  // date de sortie réelle est inconnue, la DLC est la seule borne honnête.
+  autoUsed?: boolean;
   // Refroidissement rapide HACCP — fields captured when actionType === 'cooling'.
   coolingStartedAt?: number;
   coolingFinishedAt?: number;

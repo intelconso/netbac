@@ -43,7 +43,7 @@ export default function HistoryScreen() {
                   <Text className="text-sm font-black text-gray-900 uppercase" numberOfLines={1}>{product.name}</Text>
                   <View className={cn('px-2 py-0.5 rounded-full', product.status === 'used' ? 'bg-success/10' : 'bg-danger/10')}>
                     <Text className={cn('text-[8px] font-black uppercase', product.status === 'used' ? 'text-success' : 'text-danger')}>
-                      {product.status === 'used' ? 'Utilisé' : 'Jeté'}
+                      {product.status === 'used' ? (product.autoUsed ? 'Utilisé (auto)' : 'Utilisé') : 'Jeté'}
                     </Text>
                   </View>
                 </View>

@@ -353,7 +353,7 @@ export default function ReportsScreen() {
                     </View>
                     <View className="px-2.5 py-1 rounded-lg" style={{ backgroundColor: color + '20' }}>
                       <Text className="text-[9px] font-black uppercase tracking-widest" style={{ color }}>
-                        {p.status === 'active' ? 'Actif' : p.status === 'used' ? 'Utilisé' : 'Jeté'}
+                        {p.status === 'active' ? 'Actif' : p.status === 'used' ? (p.autoUsed ? 'Utilisé (auto)' : 'Utilisé') : 'Jeté'}
                       </Text>
                     </View>
                   </View>

@@ -31,3 +31,19 @@ export function validateUsedAt({ usedAt, dlc, addedAt, now }: UsedAtCheck): stri
 
   return errors;
 }
+
+// Clôture automatique : une étiquette encore active 24 h après sa DLC passe en
+// « Utilisé » sans que personne ne la touche — sinon les oublis s'accumulent
+// dans les bacs et noient les vraies alertes.
+//
+// Pur, calculé depuis `dlc` : tous les appareils s'accordent sans se parler.
+export const AUTO_USE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export function staleLabelIds(
+  products: Array<{ id: string; status: string; dlc: number; deletedAt?: number }>,
+  now: number,
+): string[] {
+  return products
+    .filter((p) => p.status === 'active' && !p.deletedAt && now >= p.dlc + AUTO_USE_GRACE_MS)
+    .map((p) => p.id);
+}

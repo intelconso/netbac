@@ -144,6 +144,14 @@ function RootInner() {
     return () => clearTimeout(t);
   }, [notes]);
 
+  // Étiquettes oubliées : encore actives 24 h après leur DLC, l'app les passe
+  // en « Utilisé » (marquées `autoUsed`). Rend 0 sans écrire quand il n'y a
+  // rien à faire, donc rejouable à chaque changement de `products`.
+  useEffect(() => {
+    const t = setTimeout(() => { useStore.getState().autoUseStaleLabels(); }, 3000);
+    return () => clearTimeout(t);
+  }, [products]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
