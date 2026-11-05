@@ -6,6 +6,7 @@ import { AppState as RNAppState, AppStateStatus } from 'react-native';
 import { db } from './firebase';
 import { useStore } from './store';
 import { AppState } from '../types';
+import { isWriteLocked } from './writeGate';
 
 const COLLECTION = 'users';
 const DEBOUNCE_MS = 1000;
@@ -124,6 +125,11 @@ function userDoc(uid: string) {
 
 export async function pushToCloud(uid: string | null): Promise<void> {
   if (!uid) return;
+  // Lecture seule : les règles Firestore refuseraient l'écriture, et le statut
+  // passerait à 'error' puis rejouerait toutes les 30 s pour rien. Rien n'est
+  // perdu — le store refuse déjà les saisies — et le passage à l'abonnement
+  // relance un cycle complet (voir access.ts).
+  if (isWriteLocked()) return;
   const { setSyncState } = useStore.getState();
   setSyncState({ status: 'syncing' });
   try {
@@ -274,6 +280,13 @@ export function startSync(uid: string): void {
     lastForegroundResyncAt = now;
     resync(activeUid);
   });
+}
+
+// Relance un cycle pull → push sur la session en cours, s'il y en a une.
+// Sert au déverrouillage (abonnement souscrit) : les saisies faites avant
+// l'expiration et jamais poussées partent à ce moment-là.
+export function resyncActive(): void {
+  if (activeUid) resync(activeUid);
 }
 
 export function stopSync(): void {

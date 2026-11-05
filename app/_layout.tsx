@@ -11,6 +11,12 @@ import { rescheduleAllDlcReminders, scheduleTaskDigest, nextReminderOccurrence }
 import { pendingTaskCount } from '../src/lib/tasks';
 import { startOfDayMs } from '../src/lib/serviceDays';
 import { useSession } from '../src/lib/useSession';
+import { useAccess } from '../src/lib/access';
+import { isReadOnly } from '../src/lib/subscription';
+import { setOnWriteBlocked } from '../src/lib/writeGate';
+
+// Écrans qui ne servent qu'à saisir — inaccessibles en lecture seule.
+const WRITE_ONLY_ROUTES = new Set(['add-product', 'express-add', 'camera']);
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null; info: ErrorInfo | null }> {
   state = { error: null as Error | null, info: null as ErrorInfo | null };
@@ -56,6 +62,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
   const lastUidRef = React.useRef<string | null | undefined>(undefined);
+  const readOnly = useAccess((a) => isReadOnly(a.access));
 
   useEffect(() => {
     if (initializing) return;
@@ -65,10 +72,19 @@ function AuthGate({ children }: { children: ReactNode }) {
       switchStoreToUser(uid)
         .then(() => {
           if (uid) {
-            // Lazy import to keep the auth path independent of Firestore on cold start
-            import('../src/lib/sync').then((sync) => sync.startSync(uid));
-            import('../src/lib/photoQueue').then((pq) => pq.startPhotoQueue());
+            // Lazy import to keep the auth path independent of Firestore on cold start.
+            // L'abonnement d'abord : la synchro ne pousse qu'une fois l'essai
+            // créé (ou après 4 s hors ligne), sans quoi les règles Firestore
+            // refuseraient le premier envoi d'un compte neuf.
+            import('../src/lib/access')
+              .then((access) => access.startAccess(uid))
+              .catch(() => {})
+              .then(() => {
+                import('../src/lib/sync').then((sync) => sync.startSync(uid));
+                import('../src/lib/photoQueue').then((pq) => pq.startPhotoQueue());
+              });
           } else {
+            import('../src/lib/access').then((access) => access.stopAccess());
             import('../src/lib/sync').then((sync) => sync.stopSync());
             import('../src/lib/photoQueue').then((pq) => pq.stopPhotoQueue());
           }
@@ -80,8 +96,26 @@ function AuthGate({ children }: { children: ReactNode }) {
       router.replace('/login' as any);
     } else if (user && inAuthGroup) {
       router.replace('/');
+    } else if (user && readOnly && WRITE_ONLY_ROUTES.has(segments[0] as string)) {
+      // Un formulaire de saisie en lecture seule ferait remplir l'écran pour
+      // rien : l'enregistrement serait refusé à la fin. On l'intercepte avant.
+      router.replace('/paywall' as any);
     }
-  }, [user, initializing, segments]);
+  }, [user, initializing, segments, readOnly]);
+
+  // Une saisie refusée par le store (lecture seule) ouvre l'écran
+  // d'abonnement. Limité à une ouverture toutes les 2 s : un écran peut
+  // enchaîner plusieurs actions refusées sur un seul appui.
+  useEffect(() => {
+    let lastAt = 0;
+    setOnWriteBlocked(() => {
+      const now = Date.now();
+      if (now - lastAt < 2000) return;
+      lastAt = now;
+      router.push('/paywall' as any);
+    });
+    return () => setOnWriteBlocked(null);
+  }, []);
 
   // Render nothing while Firebase determines the cached auth state. Otherwise
   // the router would briefly mount whatever screen the URL points at (often
@@ -175,6 +209,7 @@ function RootInner() {
             <Stack.Screen name="inventory/index" />
             <Stack.Screen name="inventory/[id]" />
             <Stack.Screen name="camera" />
+            <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
           </Stack>
         </AuthGate>
       </SafeAreaProvider>

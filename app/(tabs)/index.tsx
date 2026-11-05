@@ -11,6 +11,7 @@ import { lowStockArticles } from '../../src/lib/inventory';
 import { requestedCount } from '../../src/lib/shopping';
 import { NOTE_PAPER, noteTimeLabel, visibleNotes } from '../../src/lib/notes';
 import { Note } from '../../src/types';
+import { SubscriptionBanner } from '../../src/components/SubscriptionBanner';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -263,6 +264,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 24, paddingBottom: 96, gap: 14 }}>
+      <SubscriptionBanner />
       {/* Header */}
       <View className="gap-1">
         <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{today}</Text>

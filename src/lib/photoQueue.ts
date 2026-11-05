@@ -4,6 +4,7 @@ import { useStore } from './store';
 import { compressImage, uploadToCloudinary } from './cloudinary';
 import { randomId } from './utils';
 import { PendingPhoto } from '../types';
+import { isWriteLocked } from './writeGate';
 
 // Offline-first photos. A captured photo is compressed and copied into the
 // app's document directory, then queued (device-locally, see
@@ -126,6 +127,10 @@ let processing = false;
 // file went missing.
 export async function processPhotoQueue(): Promise<void> {
   if (processing) return;
+  // Lecture seule : l'envoi écrirait l'URL sur l'étiquette via updateProduct,
+  // que le store refuse — la photo sortirait de la file et son fichier serait
+  // effacé sans que l'URL soit jamais enregistrée. On attend le déverrouillage.
+  if (isWriteLocked()) return;
   const net = await NetInfo.fetch();
   if (!net.isConnected) return;
 

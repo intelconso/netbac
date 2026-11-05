@@ -48,6 +48,45 @@ npm test
 
 ## Open status
 
+- **Abonnement (2026-11-04)** — modèle payant : **essai gratuit de 30 jours puis
+  abonnement mensuel unique**, via RevenueCat sur les deux stores. Un
+  abonnement = un restaurant = un compte Firebase (tous les téléphones
+  partagent le compte). Trois sources de droit d'écriture, tranchées par
+  `resolveAccess()` dans [subscription.ts](src/lib/subscription.ts) :
+  `subscriptions/{uid}.comp` (offert), `.trialStartedAt` (essai), et
+  l'entitlement RevenueCat `pro` (claim `revenueCatEntitlements` posé par
+  l'extension Firebase de RevenueCat, + `CustomerInfo` côté app).
+  **La sécurité est dans [firestore.rules](firestore.rules)**, pas dans l'app :
+  écriture de `users/{uid}` refusée hors essai/abonnement/offert. L'essai se
+  crée UNE fois, par l'app, daté `request.time` (horloge serveur) — jamais
+  modifiable ni supprimable côté client. **Un essai PAR TÉLÉPHONE** : l'essai
+  naît dans le même lot que `trialDevices/{clé du téléphone}` (Android ID /
+  identifierForVendor, voir `trialDeviceKey`), et les règles refusent un
+  essai sur un téléphone inscrit à un autre compte — l'app crée alors
+  `{ noTrial: true }` = lecture seule d'emblée. Contournable par remise à
+  zéro d'usine, c'est accepté : le vrai frein est l'historique HACCP qu'un
+  compte neuf n'a pas. `comp` ne s'écrit qu'en admin
+  ([grant-comp.js](scripts/grant-comp.js), dry-run par défaut). Règles
+  verrouillées par `npm run test:rules` (émulateur ; firebase-tools 13 parce
+  que la machine a Java 17 et la v15 exige Java 21).
+  **Expiré = lecture seule, jamais lockout** : un registre HACCP doit rester
+  consultable par un contrôleur. Toutes les actions du store sont enveloppées
+  d'office (fin de [store.ts](src/lib/store.ts)) — une action ajoutée plus
+  tard est bloquée sans y penser ; ne passent que `ALWAYS_ALLOWED_ACTIONS`
+  (fusion du cloud, synchro, file photo). Une action dont l'appelant lit le
+  retour DOIT avoir sa forme neutre dans `BLOCKED_RESULTS`. Le verrou vit dans
+  [writeGate.ts](src/lib/writeGate.ts) (sans dépendance, pour Jest) et est posé
+  par [access.ts](src/lib/access.ts). En lecture seule, sync ne pousse plus et
+  la file photo attend (sinon l'URL d'une photo envoyée serait perdue) ; le
+  déverrouillage relance les deux.
+  `unknown` (doc pas encore lu, hors ligne) n'est **jamais** traité comme
+  expiré. La synchro ne démarre qu'après `startAccess` (essai créé, ou 4 s) :
+  sinon le premier push d'un compte neuf serait refusé.
+  Clés RevenueCat dans `app.json → extra.revenuecat` : **vides tant que les
+  stores ne sont pas configurés**, et tout le module achat est alors un no-op
+  (« Abonnement bientôt disponible »). URLs CGU / confidentialité dans
+  `extra.legal` — Apple les exige sur l'écran d'abonnement.
+
 - **Notes (2026-09-04)** — panneau de notes que l'équipe se laisse, en
   rectangle pleine largeur SOUS les tuiles du tableau de bord, et écran
   [notes.tsx](app/notes.tsx) pour lire et écrire. **Rien à voir avec

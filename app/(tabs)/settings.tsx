@@ -18,6 +18,7 @@ import CreateBacModal from '../../src/components/CreateBacModal';
 import UnitIcon from '../../src/components/UnitIcon';
 import ZoneIcon from '../../src/components/ZoneIcon';
 import SyncRow from '../../src/components/SyncRow';
+import { SubscriptionRow } from '../../src/components/SubscriptionBanner';
 import FabricationTypesManager from '../../src/components/FabricationTypesManager';
 import EmployeesManager from '../../src/components/EmployeesManager';
 import TasksManager from '../../src/components/TasksManager';
@@ -218,6 +219,7 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
+          <SubscriptionRow />
           <SyncRow />
         </View>
 

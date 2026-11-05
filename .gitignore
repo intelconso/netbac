@@ -37,3 +37,7 @@ tmp/
 
 # Local Firestore backup dumps (contain user emails) — NEVER commit
 netbac-backup-*.json
+
+# Émulateur Firebase
+firestore-debug.log
+firebase-debug.log

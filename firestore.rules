@@ -1,0 +1,84 @@
+rules_version = '2';
+
+// NETBAC — règles Firestore.
+//
+// Un compte = un restaurant. `users/{uid}` porte tout l'état de l'app (un seul
+// document, voir src/lib/sync.ts). `subscriptions/{uid}` dit si le compte a le
+// droit d'écrire — voir src/lib/subscription.ts pour la même règle côté app.
+//
+// Lecture : toujours permise au propriétaire, même abonnement expiré — un
+// registre HACCP doit rester consultable. Écriture : seulement abonné, en
+// essai, ou compte offert.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function subPath(uid) {
+      return /databases/$(database)/documents/subscriptions/$(uid);
+    }
+
+    // Claim posé par l'extension Firebase de RevenueCat.
+    function hasPro() {
+      return request.auth.token.get('revenueCatEntitlements', []).hasAny(['pro']);
+    }
+
+    // 30 jours : doit rester égal à TRIAL_DAYS (src/lib/subscription.ts).
+    function canWrite(uid) {
+      return hasPro()
+        || (exists(subPath(uid)) && (
+             get(subPath(uid)).data.get('comp', false) == true
+             || (get(subPath(uid)).data.get('trialStartedAt', null) != null
+                 && request.time < get(subPath(uid)).data.trialStartedAt + duration.value(30, 'd'))
+           ));
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if isOwner(uid) && canWrite(uid);
+    }
+
+    function devPath(key) {
+      return /databases/$(database)/documents/trialDevices/$(key);
+    }
+
+    // Créé une seule fois par l'app, à la première ouverture, avec la date du
+    // SERVEUR (request.time) — l'horloge du téléphone n'y est pour rien.
+    // Jamais modifiable ni supprimable par l'app : `comp` et toute
+    // correction passent par le SDK admin (scripts/grant-comp.js).
+    //
+    // Deux formes seulement :
+    //   - un essai, lié au téléphone (`trialDevice`) qui doit être inscrit à
+    //     CE compte à l'issue de l'écriture — inscrit dans le même lot, ou
+    //     déjà à lui. Un téléphone inscrit à un autre compte : refusé.
+    //   - `noTrial` : le téléphone a déjà eu son essai. Ne donne aucun droit.
+    match /subscriptions/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && (
+        (request.resource.data.keys().hasOnly(['trialStartedAt', 'trialDevice'])
+          && request.resource.data.trialStartedAt == request.time
+          && request.resource.data.trialDevice is string
+          && existsAfter(devPath(request.resource.data.trialDevice))
+          && getAfter(devPath(request.resource.data.trialDevice)).data.uid == uid)
+        || (request.resource.data.keys().hasOnly(['noTrial'])
+          && request.resource.data.noTrial == true)
+      );
+    }
+
+    // Un essai par téléphone. Lisible un document à la fois (l'app regarde si
+    // SON téléphone a déjà servi), jamais listable. Ne s'inscrit qu'avec la
+    // création de l'essai du compte, dans le même lot — donc une fois par
+    // compte au plus — et ne se modifie ni ne s'efface.
+    match /trialDevices/{key} {
+      allow get: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && !exists(subPath(request.auth.uid))
+        && getAfter(subPath(request.auth.uid)).data.get('trialDevice', '') == key;
+    }
+  }
+}

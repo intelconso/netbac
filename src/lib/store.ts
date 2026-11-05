@@ -9,6 +9,7 @@ import { dayOverrideId, startOfDayMs } from './serviceDays';
 import { taskCompletionId } from './tasks';
 import { expiredNoteIds } from './notes';
 import { staleLabelIds } from './usedAt';
+import { isWriteLocked, notifyWriteBlocked } from './writeGate';
 import {
   DEFAULT_SHOPPING_ITEMS,
   DEFAULT_SUPPLIERS,
@@ -1856,6 +1857,84 @@ export const useStore = create<AppState & StoreActions>()(
     }
   )
 );
+
+// ── Lecture seule (abonnement expiré) ───────────────────────────────────────
+//
+// Plutôt qu'un test dans chacune des ~120 actions, elles sont toutes
+// enveloppées ici : une action ajoutée plus tard est bloquée d'office, sans
+// qu'on ait à y penser. Ne passent que celles de la liste ci-dessous.
+//
+// Toujours permises : la plomberie (synchro, fusion du cloud, file photo,
+// changement de compte) — rien de tout ça n'est une saisie. La fusion du cloud
+// surtout : un compte expiré doit continuer à VOIR ce que les autres
+// téléphones avaient saisi avant l'expiration.
+export const ALWAYS_ALLOWED_ACTIONS = new Set<string>([
+  'applyCloudState',
+  'setSyncState',
+  'resetState',
+  'setOffline',
+  'setUser',
+  'enqueuePendingPhoto',
+  'removePendingPhoto',
+  'enqueueTaskPhotoUpload',
+  'removeTaskPhotoUpload',
+  'setTaskPhotoUrl',
+]);
+
+// Ménage automatique lancé par l'app elle-même : bloqué sans ouvrir l'écran
+// d'abonnement — personne n'a rien demandé.
+export const SILENT_BLOCKED_ACTIONS = new Set<string>([
+  'purgeExpiredNotes',
+  'autoUseStaleLabels',
+]);
+
+// Valeur rendue par une action refusée, pour les actions dont l'appelant lit
+// le retour. `undefined` ferait planter un `if (!r.ok)` ; une forme neutre
+// laisse l'écran se comporter comme après un refus ordinaire.
+const BLOCKED_ERROR = 'Abonnement requis pour modifier les données.';
+const blockedOk = () => ({ ok: false, error: BLOCKED_ERROR });
+export const BLOCKED_RESULTS: Record<string, () => unknown> = {
+  addBac: () => '',
+  addProduct: () => '',
+  addCustomActionType: () => '',
+  addFabricationType: () => '',
+  addTaskPhoto: () => '',
+  addArticle: () => '',
+  removeCustomActionType: blockedOk,
+  updateArticle: blockedOk,
+  addArticleCategory: blockedOk,
+  updateArticleCategory: blockedOk,
+  addSupplier: blockedOk,
+  updateSupplier: blockedOk,
+  addShoppingItem: blockedOk,
+  updateShoppingItem: blockedOk,
+  addShoppingExtra: blockedOk,
+  deleteStockMovement: blockedOk,
+  restoreDefaultArticleCategories: () => 0,
+  clearShoppingList: () => 0,
+  restoreDefaultShoppingCatalog: () => 0,
+  purgeExpiredNotes: () => 0,
+  autoUseStaleLabels: () => 0,
+  importArticlesFromProducts: () => ({ created: 0, linked: 0 }),
+  autoAssignArticleLocations: () => ({ placed: 0, remaining: 0 }),
+};
+
+(function guardActions() {
+  const state = useStore.getState() as unknown as Record<string, unknown>;
+  const guarded: Record<string, unknown> = {};
+  for (const key of Object.keys(state)) {
+    const fn = state[key];
+    if (typeof fn !== 'function' || ALWAYS_ALLOWED_ACTIONS.has(key)) continue;
+    guarded[key] = (...args: unknown[]) => {
+      if (isWriteLocked()) {
+        if (!SILENT_BLOCKED_ACTIONS.has(key)) notifyWriteBlocked(key);
+        return BLOCKED_RESULTS[key]?.();
+      }
+      return (fn as (...a: unknown[]) => unknown)(...args);
+    };
+  }
+  useStore.setState(guarded as Partial<AppState & StoreActions>);
+})();
 
 export async function switchStoreToUser(uid: string | null) {
   const newKey = uid ? `netbac-storage-${uid}` : 'netbac-storage-anon';

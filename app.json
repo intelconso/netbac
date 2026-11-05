@@ -72,6 +72,15 @@
       "cloudinary": {
         "cloudName": "durqtcvrf",
         "uploadPreset": "netbac_products"
+      },
+      "revenuecat": {
+        "testStoreApiKey": "test_QLhkVqzXXziSQcZyiqzAcqQBCOs",
+        "androidApiKey": "goog_tgonlsKMfJPBJSWUImtVZSXdguc",
+        "iosApiKey": ""
+      },
+      "legal": {
+        "termsUrl": "",
+        "privacyUrl": ""
       }
     },
     "experiments": {
