@@ -41,3 +41,7 @@ netbac-backup-*.json
 # Émulateur Firebase
 firestore-debug.log
 firebase-debug.log
+/ios
+*.p8
+/credentials
+credentials.json

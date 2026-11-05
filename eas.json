@@ -20,10 +20,22 @@
     "production": {
       "android": {
         "buildType": "app-bundle"
-      }
+      },
+      "ios": {
+        "credentialsSource": "local"
+      },
+      "autoIncrement": true
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6831171546",
+        "appleTeamId": "3NX8R3483B",
+        "ascApiKeyPath": "./AuthKey_469YC7F7CL.p8",
+        "ascApiKeyId": "469YC7F7CL",
+        "ascApiKeyIssuerId": "7ffa5a73-e2af-40a1-93e1-b212249aadbc"
+      }
+    }
   }
 }

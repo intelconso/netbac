@@ -63,6 +63,13 @@ describe('users/{uid}', () => {
     await assertSucceeds(setDoc(doc(as('b', { revenueCatEntitlements: ['pro'] }), 'users', 'b'), { zones: [] }));
   });
 
+  it('supprimer son compte : permis même essai terminé ; celui d’un autre : refusé', async () => {
+    await seedSub('a', { trialStartedAt: daysAgo(90) });
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'users', 'a'), { zones: [] }));
+    await assertFails(deleteDoc(doc(as('b'), 'users', 'a')));
+    await assertSucceeds(deleteDoc(doc(as('a'), 'users', 'a')));
+  });
+
   it('sans document d’abonnement : écriture refusée', async () => {
     await assertFails(setDoc(doc(as('a'), 'users', 'a'), { zones: [] }));
   });

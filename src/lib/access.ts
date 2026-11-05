@@ -113,10 +113,26 @@ export function afterPurchase(): void {
   }
 }
 
+// identifierForVendor change si TOUTES les apps de l'éditeur sont
+// désinstallées — désinstaller NETBAC suffirait. Le trousseau (Keychain),
+// lui, survit à la désinstallation : on y fige le premier identifiant vu.
+async function iosDeviceId(): Promise<string | null> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const SecureStore = require('expo-secure-store');
+  const KEY = 'netbac.trialDeviceId';
+  const saved: string | null = await SecureStore.getItemAsync(KEY);
+  if (saved) return saved;
+  const idfv = await Application.getIosIdForVendorAsync();
+  if (idfv) {
+    await SecureStore.setItemAsync(KEY, idfv, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY });
+  }
+  return idfv;
+}
+
 async function deviceKey(): Promise<string | null> {
   try {
     if (Platform.OS === 'android') return trialDeviceKey('a', Application.getAndroidId());
-    if (Platform.OS === 'ios') return trialDeviceKey('i', await Application.getIosIdForVendorAsync());
+    if (Platform.OS === 'ios') return trialDeviceKey('i', await iosDeviceId());
   } catch { /* pas d'identifiant : pas d'essai pour l'instant, on réessaiera */ }
   return null;
 }

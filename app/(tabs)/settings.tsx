@@ -235,6 +235,10 @@ export default function SettingsScreen() {
             <Text className="text-[9px] font-bold text-red-400 uppercase tracking-widest mt-0.5">Quitter votre compte</Text>
           </View>
         </Pressable>
+
+        <Pressable onPress={() => router.push('/delete-account' as any)} className="mt-6 py-2 self-center">
+          <Text className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Supprimer mon compte</Text>
+        </Pressable>
       </ScrollView>
     );
   }

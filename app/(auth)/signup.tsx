@@ -6,6 +6,7 @@ import { ShieldCheck, Eye, EyeOff } from 'lucide-react-native';
 import { signUpWithEmail, signOut } from '../../src/lib/firebase';
 import { signInWithGoogle } from '../../src/lib/googleSignIn';
 import { GOOGLE_WEB_CLIENT_ID } from '../../src/lib/authConfig';
+import { AppleSignInButton } from '../../src/components/AppleSignInButton';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -182,6 +183,11 @@ export default function SignupScreen() {
                   </>
                 )}
               </Pressable>
+              <AppleSignInButton
+                disabled={googleLoading}
+                onSuccess={() => router.replace('/')}
+                onError={setError}
+              />
             </>
           ) : null}
         </View>

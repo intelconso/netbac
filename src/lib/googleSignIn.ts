@@ -49,3 +49,22 @@ export async function signOutGoogle() {
     /* ignore */
   }
 }
+
+// Pour la suppression du compte : Firebase exige une connexion récente avant
+// deleteUser — on redemande Google, et on réauthentifie avec ce jeton.
+export async function reauthWithGoogle(webClientId: string) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { GoogleSignin: G } = require('@react-native-google-signin/google-signin');
+  if (!configured) {
+    G.configure({ webClientId });
+    configured = true;
+  }
+  const res: any = await G.signIn();
+  if (res?.type === 'cancelled') throw Object.assign(new Error(''), { code: 'ERR_REQUEST_CANCELED' });
+  const idToken: string | undefined = res?.data?.idToken ?? res?.idToken;
+  if (!idToken) throw new Error('Google n’a pas renvoyé d’idToken.');
+  const { auth } = require('./firebase');
+  const { GoogleAuthProvider } = require('@react-native-firebase/auth');
+  if (!auth.currentUser) throw new Error('Aucun utilisateur connecté.');
+  await auth.currentUser.reauthenticateWithCredential(GoogleAuthProvider.credential(idToken));
+}
