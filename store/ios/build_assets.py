@@ -7,7 +7,8 @@ faint discs, a two-line French caption, the capture with rounded corners, a soft
 NETBAC colors: emerald gradient from the brand primary #10B981, darkened so white text reads, mint
 second line. The whole screen is kept (fitted, not cropped): the tab bar is part of what the shot shows.
 
-- raw/iphone/NN-*.png  real iPhone captures (any iPhone size)   -> out/iphone/  1290x2796 (6.9")
+- raw/iphone/NN-*.png  real iPhone captures (any iPhone size)   -> out/iphone-1320x2868/ (6.9", what
+                       App Store Connect asks for), out/iphone-1206x2622/ (6.3"), out/iphone/ 1290x2796
 - raw/ipad/NN-*.png    real iPad captures (optional)            -> out/ipad/    2048x2732 (13")
 """
 from pathlib import Path
@@ -40,7 +41,7 @@ SCREENSHOTS = [
 STATUS_BAR_PT = {375: 44, 390: 47, 428: 47, 393: 54, 430: 54, 402: 62, 440: 62}
 IPAD_STATUS_BAR_PT = 24
 
-SIZES = {"iphone": (1290, 2796), "ipad": (2048, 2732)}
+SIZES = {"iphone-1320x2868": (1320, 2868), "iphone-1206x2622": (1206, 2622), "iphone": (1290, 2796), "ipad": (2048, 2732)}
 
 
 def font(size: int) -> ImageFont.FreeTypeFont:
@@ -116,7 +117,7 @@ if __name__ == "__main__":
     for kind in SIZES:
         (OUT / kind).mkdir(parents=True, exist_ok=True)
         for name, l1, l2 in SCREENSHOTS:
-            raw = RAW / kind / name
+            raw = RAW / ("ipad" if kind == "ipad" else "iphone") / name
             if raw.exists():
                 build(kind, raw, l1, l2)
                 print("built", OUT / kind / name)
