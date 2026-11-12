@@ -18,6 +18,6 @@
     ]
   },
   "extensions": {
-    "firestore-revenuecat-purchases": "revenuecat/firestore-revenuecat-purchases@0.1.19"
+    "firestore-revenuecat-purchases": "revenuecat/firestore-revenuecat-purchases@0.2.0"
   }
 }
