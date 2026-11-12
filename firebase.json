@@ -3,7 +3,21 @@
     "rules": "firestore.rules"
   },
   "emulators": {
-    "firestore": { "port": 8080 },
-    "ui": { "enabled": false }
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": false
+    }
+  },
+  "hosting": {
+    "public": "hosting",
+    "cleanUrls": true,
+    "ignore": [
+      "**/.*"
+    ]
+  },
+  "extensions": {
+    "firestore-revenuecat-purchases": "revenuecat/firestore-revenuecat-purchases@0.1.19"
   }
 }

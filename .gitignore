@@ -45,3 +45,5 @@ firebase-debug.log
 *.p8
 /credentials
 credentials.json
+/backups
+/.firebase

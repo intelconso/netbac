@@ -1,0 +1,11 @@
+{
+  "projects": {},
+  "targets": {},
+  "etags": {
+    "netbac-6207e": {
+      "extensionInstances": {
+        "firestore-revenuecat-purchases": "e807cc8f1483482faa96615b8cd7a516bc9e16b7a7cea018a4c6f5f330408f13"
+      }
+    }
+  }
+}
